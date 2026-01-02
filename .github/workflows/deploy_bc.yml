@@ -14,9 +14,9 @@ jobs:
       max-parallel: 1
       matrix:
         server_dir:
-          - /public_html/wp-content/plugins/internal-external-link-manager/
-          # - /public_html/demo/wp-content/plugins/internal-external-link-manager/
-          - /public_html/en/wp-content/plugins/internal-external-link-manager/
+          - /public_html/wp-content/plugins/internal-external-link-manager-premium/
+          # - /public_html/demo/wp-content/plugins/internal-external-link-manager-premium/
+          - /public_html/en/wp-content/plugins/internal-external-link-manager-premium/
           
 
     steps:
