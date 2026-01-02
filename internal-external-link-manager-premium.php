@@ -1,11 +1,11 @@
 <?php
 /**
- * Plugin Name: Internal & External Link Manager (BeeClear)
+ * Plugin Name: Internal & External Link Manager - Premium (BeeClear)
  * Description: Turn keywords into smart, automatic links—drive traffic to key posts/pages and trusted external URLs. Fine-grained rule controls (regex, case, title, aria, rel, class, per-page cap, post-type targeting), custom priorities, clear overview tables, import/export, and design tweaks. Auto-rebuild on save and one-click Rebuild index with a summary.
  * Version: 1.7.5
  * Author: BeeClear
  * Author URI: https://beeclear.pl
- * Text Domain: internal-external-link-manager
+ * Text Domain: internal-external-link-manager-premium
  * Requires at least: 5.8
  * Requires PHP: 7.4
  */
