@@ -1,7 +1,7 @@
 === Internal & External Link Manager - Premium (BeeClear) ===
 Contributors: beeclear
 Donate link: https://beeclear.pl/
-Tags: internal links, external links, seo, autolink, wordpress
+Tags: internal links, external links, seo, autolink
 Requires at least: 5.8
 Tested up to: 6.9
 Requires PHP: 7.4
@@ -13,7 +13,7 @@ Turn keywords into smart, automatic links—drive traffic to key posts/pages and
 
 == Description ==
 
-Internal & External Link Manager (BeeClear) is a premium WordPress plugin that automatically links defined phrases or patterns within your website, improving internal linking structure and SEO efficiency. It supports both internal and external linking with advanced configuration options.
+Internal & External Link Manager automatically links defined phrases or patterns within your website, improving linking structure and SEO efficiency.
 
 = Key Features =
 * Rule-based internal and external linking with regex and case-sensitivity support.
