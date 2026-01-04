@@ -2362,7 +2362,7 @@ JS;
         }
     }
 
-    private function disable_free_version_if_active(){
+    public function disable_free_version_if_active(){
         if ( ! function_exists('is_plugin_active') ) {
             require_once ABSPATH . 'wp-admin/includes/plugin.php';
         }
