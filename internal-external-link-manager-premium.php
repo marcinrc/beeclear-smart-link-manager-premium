@@ -3676,7 +3676,7 @@ JS;
         if ( ! current_user_can('manage_options') ) return;
 
         if( isset($_POST['beeclear_ilm_save_external']) && check_admin_referer(self::NONCE, self::NONCE) ){
-            $clean = $this->sanitize_external_rules( isset($_POST['beeclear_ilm_ext']) ? (array) wp_unslash($_POST['beeclear_ilm_ext']) : array() );
+            $clean = $this->sanitize_external_rules( isset($_POST['beeclear_ilm_ext']) ? array_map('wp_unslash', (array) $_POST['beeclear_ilm_ext']) : array() );
             update_option(self::OPT_EXT_RULES, $clean, false);
             echo '<div class="notice notice-success"><p>'.esc_html__('External rules saved.', 'internal-external-link-manager-premium').'</p></div>';
 
@@ -3934,7 +3934,7 @@ JS;
                 }
                 $idx = $this->rebuild_index();
                 echo '<div class="notice notice-success"><p>'.esc_html__('Imported successfully and index rebuilt.', 'internal-external-link-manager-premium').'</p>';
-                echo $this->render_index_summary_html($this->summarize_index($idx));
+                echo wp_kses_post( $this->render_index_summary_html( $this->summarize_index($idx) ) );
                 echo '</div>';
                 $this->log_activity(__('Import finished and index rebuilt.', 'internal-external-link-manager-premium'));
             } else {
