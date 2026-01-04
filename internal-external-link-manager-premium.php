@@ -2408,9 +2408,13 @@ JS;
         if ( ! $this->is_premium_active() ) return $actions;
 
         $message = esc_html__('Premium version is activated', 'internal-external-link-manager-premium');
+        $premium_message = '<span class="beeclear-ilm-premium-active">' . $message . '</span>';
 
         unset($actions['activate']);
-        array_unshift($actions, '<span class="beeclear-ilm-premium-active">' . $message . '</span>');
+
+        if (in_array($premium_message, $actions, true)) return $actions;
+
+        array_unshift($actions, $premium_message);
 
         return $actions;
     }
