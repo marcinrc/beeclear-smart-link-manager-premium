@@ -654,19 +654,19 @@ class BeeClear_ILM {
         $state['total'] = $total;
         update_option(self::OPT_OVERVIEW_SCAN, $state, false);
 
-        $done = $processed >= $total;
-        if ( $done ) {
-            delete_option(self::OPT_OVERVIEW_SCAN);
-            $summary = $this->build_scan_summary($total, isset($state['started_at']) ? (int)$state['started_at'] : 0);
-            $this->store_scan_summary($summary);
-            /* translators: 1: scanned pages count, 2: internal links count, 3: external links count. */
-            $this->log_activity(sprintf(
-                __('Scan finished: %1$d pages, %2$d internal links, %3$d external links.', 'internal-external-link-manager-premium'),
-                (int) $summary['scanned'],
-                (int) $summary['internal_links'],
-                (int) $summary['external_links']
-            ));
-        }
+            $done = $processed >= $total;
+            if ( $done ) {
+                delete_option(self::OPT_OVERVIEW_SCAN);
+                $summary = $this->build_scan_summary($total, isset($state['started_at']) ? (int)$state['started_at'] : 0);
+                $this->store_scan_summary($summary);
+                $this->log_activity(sprintf(
+                    /* translators: 1: scanned pages count, 2: internal links count, 3: external links count. */
+                    __('Scan finished: %1$d pages, %2$d internal links, %3$d external links.', 'internal-external-link-manager-premium'),
+                    (int) $summary['scanned'],
+                    (int) $summary['internal_links'],
+                    (int) $summary['external_links']
+                ));
+            }
 
         return array('done' => $done, 'processed' => $processed, 'total' => $total);
     }
@@ -1209,7 +1209,7 @@ JS;
             return;
         }
         $this->admin_css_printed = true;
-        echo '<style>'.$this->admin_css_block().'</style>';
+        printf('<style>%s</style>', esc_html($this->admin_css_block()));
     }
     private function admin_css_block(){
         return '
@@ -1439,7 +1439,7 @@ JS;
 
         echo '<p>'.esc_html__('Add phrases (or regex). Order matters: top has the highest priority. Case-sensitive applies only when Regex is off.', 'internal-external-link-manager-premium').'</p>';
 
-        echo $this->render_token_tips_html();
+        echo wp_kses_post($this->render_token_tips_html());
 
         $allowed_tags_raw = get_post_meta($post->ID, self::META_ALLOWED_TAGS, true);
         $context_flag = !empty(get_post_meta($post->ID, self::META_CONTEXT_FLAG, true));
@@ -1458,24 +1458,57 @@ JS;
             }
             $phrase_label = esc_html__('Phrase or regex', 'internal-external-link-manager-premium');
             $context_label = esc_html__('Context words or regex', 'internal-external-link-manager-premium');
+            $index_attr = esc_attr((int) $i);
             echo '<div class="ilm-row"><span class="handle" aria-hidden="true">☰</span>';
             echo '<div class="ilm-rule-fields">';
             echo '<div class="ilm-field-group">';
             echo '<div class="ilm-field-controls">';
-            echo '<input type="text" name="beeclear_ilm_rules['.$i.'][phrase]" value="'.esc_attr($phrase).'" class="regular-text" placeholder="'.esc_attr($phrase_label).'" aria-label="'.$phrase_label.'">';
+            printf(
+                '<input type="text" name="beeclear_ilm_rules[%1$s][phrase]" value="%2$s" class="regular-text" placeholder="%3$s" aria-label="%4$s">',
+                $index_attr,
+                esc_attr($phrase),
+                esc_attr($phrase_label),
+                esc_attr($phrase_label)
+            );
             echo '<div class="ilm-field-flags">';
-            echo '<label><input type="checkbox" class="ilm-regex" name="beeclear_ilm_rules['.$i.'][regex]" value="1" '.checked($regex,true,false).'> '.esc_html__('Regex', 'internal-external-link-manager-premium').'</label>';
-            echo '<label><input type="checkbox" class="ilm-case" name="beeclear_ilm_rules['.$i.'][case]" value="1" '.checked($case,true,false).($regex?' disabled':'').'> '.esc_html__('Case-sensitive', 'internal-external-link-manager-premium').'</label>';
+            printf(
+                '<label><input type="checkbox" class="ilm-regex" name="beeclear_ilm_rules[%1$s][regex]" value="1" %2$s> %3$s</label>',
+                $index_attr,
+                checked($regex, true, false),
+                esc_html__('Regex', 'internal-external-link-manager-premium')
+            );
+            printf(
+                '<label><input type="checkbox" class="ilm-case" name="beeclear_ilm_rules[%1$s][case]" value="1" %2$s> %3$s</label>',
+                $index_attr,
+                checked($case, true, false).($regex ? ' disabled' : ''),
+                esc_html__('Case-sensitive', 'internal-external-link-manager-premium')
+            );
             echo '<a href="#" class="button link-delete">'.esc_html__('Remove', 'internal-external-link-manager-premium').'</a>';
             echo '</div>';
             echo '</div>';
             echo '</div>';
             echo '<div class="ilm-context-field'.($context_flag ? '' : ' hidden').'">';
             echo '<div class="ilm-field-controls">';
-            echo '<input type="text" name="beeclear_ilm_rules['.$i.'][context]" value="'.esc_attr($context_words).'" class="regular-text" placeholder="'.esc_attr__('Additional words required in the same element', 'internal-external-link-manager-premium').'" aria-label="'.$context_label.'">';
+            printf(
+                '<input type="text" name="beeclear_ilm_rules[%1$s][context]" value="%2$s" class="regular-text" placeholder="%3$s" aria-label="%4$s">',
+                $index_attr,
+                esc_attr($context_words),
+                esc_attr__('Additional words required in the same element', 'internal-external-link-manager-premium'),
+                esc_attr($context_label)
+            );
             echo '<div class="ilm-field-flags">';
-            echo '<label><input type="checkbox" class="ilm-context-regex" name="beeclear_ilm_rules['.$i.'][context_regex]" value="1" '.checked($context_regex,true,false).'> '.esc_html__('Regex', 'internal-external-link-manager-premium').'</label>';
-            echo '<label><input type="checkbox" class="ilm-context-case" name="beeclear_ilm_rules['.$i.'][context_case]" value="1" '.checked($context_case,true,false).($context_regex?' disabled':'').'> '.esc_html__('Case-sensitive', 'internal-external-link-manager-premium').'</label>';
+            printf(
+                '<label><input type="checkbox" class="ilm-context-regex" name="beeclear_ilm_rules[%1$s][context_regex]" value="1" %2$s> %3$s</label>',
+                $index_attr,
+                checked($context_regex, true, false),
+                esc_html__('Regex', 'internal-external-link-manager-premium')
+            );
+            printf(
+                '<label><input type="checkbox" class="ilm-context-case" name="beeclear_ilm_rules[%1$s][context_case]" value="1" %2$s> %3$s</label>',
+                $index_attr,
+                checked($context_case, true, false).($context_regex ? ' disabled' : ''),
+                esc_html__('Case-sensitive', 'internal-external-link-manager-premium')
+            );
             echo '<a href="#" class="button button-secondary ilm-context-erase">'.esc_html__('Erase', 'internal-external-link-manager-premium').'</a>';
             echo '</div>';
             echo '</div>';
