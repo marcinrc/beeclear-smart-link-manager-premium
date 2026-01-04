@@ -418,7 +418,7 @@ class BeeClear_ILM {
         return $html;
     }
 
-    private function store_link_context(&$contexts, $target, $phrase, $node){
+    private function store_link_context(&$contexts, $target, $phrase, $node, $manual = null){
         $phrase = is_string($phrase) ? trim($phrase) : '';
         if ($phrase === '') return;
         $html = $this->trim_html_fragment($this->get_element_outer_html($node));
@@ -428,7 +428,11 @@ class BeeClear_ILM {
         if ($element instanceof DOMElement){
             $tag = strtolower($element->tagName);
         }
-        $is_manual = strpos($html, 'beeclear-ilm-link') === false;
+        if (!is_bool($manual)){
+            $is_manual = strpos($html, 'beeclear-ilm-link') === false;
+        } else {
+            $is_manual = $manual;
+        }
 
         if (!isset($contexts[$target]) || !is_array($contexts[$target])){
             $contexts[$target] = array();
@@ -1375,8 +1379,8 @@ JS;
             }
             .beeclear-ilm-source-item{position:relative;}
             .beeclear-ilm-source-phrase{display:inline-flex;gap:4px;align-items:center;}
-            .beeclear-ilm-manual-badge{display:inline-flex;align-items:center;gap:6px;padding:2px 8px;border-radius:999px;background:#fef2e5;color:#8f3900;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.02em;}
-            .beeclear-ilm-manual-badge .dashicons{font-size:14px;line-height:1;}
+            .beeclear-ilm-manual-badge{display:inline-flex;align-items:center;gap:4px;padding:0;color:#8f3900;font-size:12px;line-height:1;opacity:.8;}
+            .beeclear-ilm-manual-badge .dashicons{font-size:16px;line-height:1;}
             .beeclear-ilm-context-btn{display:inline-flex;align-items:center;gap:4px;padding:0 2px;border:none;background:none;color:#3858e9;cursor:pointer;text-decoration:none;}
             .beeclear-ilm-context-btn:hover{color:#1d2327;}
             .beeclear-ilm-context-btn .dashicons{margin-top:2px;font-size:16px;}
@@ -2109,7 +2113,7 @@ JS;
                                     if (@$frag->appendXML($newTxt)) {
                                         $node->parentNode->replaceChild($frag, $node);
                                         if ($matched_phrase !== null){
-                                            $this->store_link_context($linked_contexts_internal, $target, $matched_phrase, $context_element ?: $node);
+                                            $this->store_link_context($linked_contexts_internal, $target, $matched_phrase, $context_element ?: $node, false);
                                         }
                                     }
                                     $linked_counts_internal[$target] = isset($linked_counts_internal[$target]) ? $linked_counts_internal[$target]+1 : 1;
@@ -2140,7 +2144,7 @@ JS;
                                         }
                                         return true;
                                     }, function($anchorNode, $matchedText) use (&$linked_contexts_internal, $target){
-                                        $this->store_link_context($linked_contexts_internal, $target, $matchedText, $anchorNode);
+                                        $this->store_link_context($linked_contexts_internal, $target, $matchedText, $anchorNode, false);
                                     }) ){
                                     $linked_counts_internal[$target] = isset($linked_counts_internal[$target]) ? $linked_counts_internal[$target]+1 : 1;
                                     $total_count++;
@@ -2202,7 +2206,7 @@ JS;
                                     if ($matched_phrase !== null){
                                         if (!isset($linked_phrases_external[$idx])) $linked_phrases_external[$idx] = array();
                                         $linked_phrases_external[$idx][$matched_phrase] = ($linked_phrases_external[$idx][$matched_phrase] ?? 0) + 1;
-                                        $this->store_link_context($linked_contexts_external, $idx, $matched_phrase, $context_element ?: $node);
+                                        $this->store_link_context($linked_contexts_external, $idx, $matched_phrase, $context_element ?: $node, false);
                                     }
                                 }
                                 $linked_counts_external[$idx] = isset($linked_counts_external[$idx]) ? $linked_counts_external[$idx]+1 : 1;
@@ -2230,7 +2234,7 @@ JS;
                                         if (!isset($linked_phrases_external[$idx])) $linked_phrases_external[$idx] = array();
                                         $linked_phrases_external[$idx][$matchedText] = ($linked_phrases_external[$idx][$matchedText] ?? 0) + 1;
                                     }
-                                    $this->store_link_context($linked_contexts_external, $idx, $matchedText, $anchorNode);
+                                    $this->store_link_context($linked_contexts_external, $idx, $matchedText, $anchorNode, false);
                                 }) ){
                                 $linked_counts_external[$idx] = isset($linked_counts_external[$idx]) ? $linked_counts_external[$idx]+1 : 1;
                                 $total_count++;
@@ -3352,10 +3356,10 @@ JS;
                             $popup_attr = esc_attr($popup_id);
                             $part .= ' <button type="button" class="button-link beeclear-ilm-context-btn" data-target="'.$popup_attr.'" aria-expanded="false" aria-controls="'.$popup_attr.'" title="'.esc_attr__('Show source element', 'internal-external-link-manager-premium').'"><span class="dashicons dashicons-format-chat" aria-hidden="true"></span><span class="screen-reader-text">'.esc_html__('Show source element', 'internal-external-link-manager-premium').'</span></button>';
                             if ($has_manual){
-                                $part .= ' <span class="beeclear-ilm-manual-badge" title="'.esc_attr__('Manual link', 'internal-external-link-manager-premium').'" aria-label="'.esc_attr__('Manual link', 'internal-external-link-manager-premium').'">'
+                                $manual_label = esc_attr__('Manual insertion link', 'internal-external-link-manager-premium');
+                                $part .= ' <span class="beeclear-ilm-manual-badge" title="'.$manual_label.'" aria-label="'.$manual_label.'">'
                                     .'<span class="dashicons dashicons-admin-tools" aria-hidden="true"></span>'
-                                    .'<span class="beeclear-ilm-manual-text">'.esc_html__('manual', 'internal-external-link-manager-premium').'</span>'
-                                    .'<span class="screen-reader-text">'.esc_html__('Manual link', 'internal-external-link-manager-premium').'</span>'
+                                    .'<span class="screen-reader-text">'.esc_html__('Manual insertion link', 'internal-external-link-manager-premium').'</span>'
                                 .'</span>';
                             }
                             if ($popup_id !== ''){
@@ -3424,10 +3428,10 @@ JS;
                                 $popup_attr = esc_attr($popup_id);
                                 $part .= ' <button type="button" class="button-link beeclear-ilm-context-btn" data-target="'.$popup_attr.'" aria-expanded="false" aria-controls="'.$popup_attr.'" title="'.esc_attr__('Show source element', 'internal-external-link-manager-premium').'"><span class="dashicons dashicons-format-chat" aria-hidden="true"></span><span class="screen-reader-text">'.esc_html__('Show source element', 'internal-external-link-manager-premium').'</span></button>';
                                 if ($has_manual){
-                                    $part .= ' <span class="beeclear-ilm-manual-badge" title="'.esc_attr__('Manual link', 'internal-external-link-manager-premium').'" aria-label="'.esc_attr__('Manual link', 'internal-external-link-manager-premium').'">'
+                                    $manual_label = esc_attr__('Manual insertion link', 'internal-external-link-manager-premium');
+                                    $part .= ' <span class="beeclear-ilm-manual-badge" title="'.$manual_label.'" aria-label="'.$manual_label.'">'
                                         .'<span class="dashicons dashicons-admin-tools" aria-hidden="true"></span>'
-                                        .'<span class="beeclear-ilm-manual-text">'.esc_html__('manual', 'internal-external-link-manager-premium').'</span>'
-                                        .'<span class="screen-reader-text">'.esc_html__('Manual link', 'internal-external-link-manager-premium').'</span>'
+                                        .'<span class="screen-reader-text">'.esc_html__('Manual insertion link', 'internal-external-link-manager-premium').'</span>'
                                     .'</span>';
                                 }
                                 $popup_html = $popup_id !== '' ? '<div id="'.$popup_attr.'" class="beeclear-ilm-context-popup" hidden>'.$popup_inner.'</div>' : '';
@@ -3503,10 +3507,10 @@ JS;
                             $popup_attr = esc_attr($popup_id);
                             $part .= ' <button type="button" class="button-link beeclear-ilm-context-btn" data-target="'.$popup_attr.'" aria-expanded="false" aria-controls="'.$popup_attr.'" title="'.esc_attr__('Show source element', 'internal-external-link-manager-premium').'"><span class="dashicons dashicons-format-chat" aria-hidden="true"></span><span class="screen-reader-text">'.esc_html__('Show source element', 'internal-external-link-manager-premium').'</span></button>';
                             if ($has_manual){
-                                $part .= ' <span class="beeclear-ilm-manual-badge" title="'.esc_attr__('Manual link', 'internal-external-link-manager-premium').'" aria-label="'.esc_attr__('Manual link', 'internal-external-link-manager-premium').'">'
+                                $manual_label = esc_attr__('Manual insertion link', 'internal-external-link-manager-premium');
+                                $part .= ' <span class="beeclear-ilm-manual-badge" title="'.$manual_label.'" aria-label="'.$manual_label.'">'
                                     .'<span class="dashicons dashicons-admin-tools" aria-hidden="true"></span>'
-                                    .'<span class="beeclear-ilm-manual-text">'.esc_html__('manual', 'internal-external-link-manager-premium').'</span>'
-                                    .'<span class="screen-reader-text">'.esc_html__('Manual link', 'internal-external-link-manager-premium').'</span>'
+                                    .'<span class="screen-reader-text">'.esc_html__('Manual insertion link', 'internal-external-link-manager-premium').'</span>'
                                 .'</span>';
                             }
                             if ($popup_id !== ''){
