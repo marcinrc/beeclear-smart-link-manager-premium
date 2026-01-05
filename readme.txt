@@ -1,7 +1,7 @@
-=== Internal & External Link Manager - Premium (BeeClear) ===
+=== Internal & External Link Manager ===
 Contributors: beeclear
 Donate link: https://beeclear.pl/
-Tags: internal links, external links, seo, autolink
+Tags: internal linking, external links, autolink, seo, geo
 Requires at least: 5.8
 Tested up to: 6.9
 Requires PHP: 7.4
@@ -9,7 +9,7 @@ Stable tag: 1.7.5
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
-Turn keywords into smart, automatic links—drive traffic to key pages and trusted external URLs with fine-grained control and SEO-friendly settings.
+Turn defined phrases into smart into automatic linking to key pages with fine-grained control and SEO-friendly settings.
 
 == Description ==
 
