@@ -1415,7 +1415,7 @@ JS;
             .beeclear-ilm-context-btn{display:inline-flex;align-items:center;gap:4px;padding:0 2px;border:none;background:none;color:#3858e9;cursor:pointer;text-decoration:none;}
             .beeclear-ilm-context-btn:hover{color:#1d2327;}
             .beeclear-ilm-context-btn .dashicons{margin-top:2px;font-size:16px;}
-            .beeclear-ilm-context-popup{position:fixed;z-index:9999;max-width:min(720px, calc(100vw - 40px));width:auto;min-width:260px;background:#fff;border:1px solid #dcdcde;box-shadow:0 8px 24px rgba(0,0,0,.12);border-radius:8px;padding:12px;}
+            .beeclear-ilm-context-popup{position:fixed;z-index:9999;max-width:100%;width:700px;background:#fff;border:1px solid #dcdcde;box-shadow:0 8px 24px rgba(0,0,0,.12);border-radius:8px;padding:12px;}
             .beeclear-ilm-context-fragment{padding:8px;border-bottom:1px solid #eef0f3;}
             .beeclear-ilm-context-fragment:last-child{border-bottom:0;}
             .beeclear-ilm-context-tag{font-size:11px;text-transform:uppercase;letter-spacing:.02em;color:#50575e;margin-bottom:6px;font-weight:600;}
