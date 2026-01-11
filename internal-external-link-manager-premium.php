@@ -852,7 +852,19 @@ jQuery(function($){
 
     // Metabox (internal rules)
     var $list = $("#beeclear-ilm-rules-list");
-    if($list.length && $.fn.sortable){ $list.sortable({handle:".handle"}); }
+    function updateRuleIndices(){
+        $list.find(".ilm-row").each(function(index){
+            $(this).find("input, select, textarea").each(function(){
+                var name = $(this).attr("name");
+                if (!name) return;
+                var updated = name.replace(/beeclear_ilm_rules\[\d+\]/, "beeclear_ilm_rules[" + index + "]");
+                if (updated !== name){ $(this).attr("name", updated); }
+            });
+        });
+    }
+    if($list.length && $.fn.sortable){
+        $list.sortable({handle:".handle", update: updateRuleIndices});
+    }
     function toggleContextFields(enabled){
         $(".ilm-context-field").toggleClass("hidden", !enabled);
     }
@@ -892,8 +904,13 @@ jQuery(function($){
             + '</div>'
             + '</div>';
         $list.append(row);
+        updateRuleIndices();
     });
-    $(document).on("click",".ilm-row .link-delete", function(e){ e.preventDefault(); $(this).closest(".ilm-row").remove(); });
+    $(document).on("click",".ilm-row .link-delete", function(e){
+        e.preventDefault();
+        $(this).closest(".ilm-row").remove();
+        updateRuleIndices();
+    });
     function syncCaseToggle($regexBox, $caseBox){
         var isRegex = $regexBox.is(":checked");
         $caseBox.prop("disabled", isRegex);
