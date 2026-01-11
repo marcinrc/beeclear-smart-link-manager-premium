@@ -1302,6 +1302,7 @@ JS;
             .ilm-metabox-card{background:#fff;border:1px solid #e2e5ea;border-radius:10px;padding:14px 16px;box-shadow:0 1px 2px rgba(0,0,0,.04)}
             .ilm-metabox-title{margin:0 0 10px;font-size:15px;display:flex;align-items:center;gap:6px}
             .ilm-metabox-field{display:flex;flex-direction:column;gap:6px;margin-bottom:12px}
+			.ilm-metabox-field input.regular-text{width: unset}
             .ilm-metabox-label{font-weight:600;color:#1d2327}
             .ilm-metabox-checkbox{display:flex;gap:8px;align-items:center;font-weight:500}
 
