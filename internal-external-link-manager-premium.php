@@ -1647,8 +1647,20 @@ JS;
         if ( $nonce === '' || ! wp_verify_nonce($nonce, self::NONCE) ) return;
         if ( ! current_user_can('edit_post', $post_id) ) return;
 
-        $raw_rules = $_POST['beeclear_ilm_rules'] ?? null;
-        if ( ! is_array($raw_rules) ) return;
+        $raw_input = filter_input( INPUT_POST, 'beeclear_ilm_rules', FILTER_DEFAULT, FILTER_REQUIRE_ARRAY );
+        if ( null === $raw_input ) {
+            $raw_input = filter_input( INPUT_POST, 'beeclear_ilm_rules', FILTER_UNSAFE_RAW );
+        }
+
+        $raw_input = is_array( $raw_input ) ? $raw_input : (is_string($raw_input) ? $raw_input : null);
+        if ( is_string( $raw_input ) && '' !== $raw_input ) {
+            $decoded = json_decode( $raw_input, true );
+            $raw_rules = is_array( $decoded ) ? $decoded : array();
+        } else {
+            $raw_rules = is_array( $raw_input ) ? $raw_input : array();
+        }
+
+        if ( empty($raw_rules) ) return;
 
         foreach ($raw_rules as $rule){
             if (!is_array($rule)) continue;
