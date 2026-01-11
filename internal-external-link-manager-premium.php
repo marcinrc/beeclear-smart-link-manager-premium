@@ -90,6 +90,7 @@ class BeeClear_ILM {
 
         // ZAPIS FRAZ — ostrożnie (autosave/revision/REST/bulk)
         add_action('save_post', array($this, 'save_post_rules'));
+        add_filter('wp_insert_post_data', array($this, 'block_empty_phrase_save'), 10, 2);
 
         add_action('before_delete_post', array($this, 'on_post_delete'));
         add_action('trashed_post', array($this, 'on_post_delete'));
@@ -1637,6 +1638,45 @@ JS;
         echo '<hr><p><strong>'.esc_html__('Admin menu name:', 'internal-external-link-manager-premium').'</strong> '
             . '<a href="' . esc_url($settings_url) . '" target="_blank" rel="noopener noreferrer">' . esc_html($menu_name) . '</a></p>';
         echo '<p><strong>'.esc_html__('Author:', 'internal-external-link-manager-premium').'</strong> <a href="https://beeclear.pl">BeeClear</a></p>';
+    }
+
+    private function maybe_block_empty_phrase_save($post_id){
+        if ( empty($_POST['beeclear_ilm_rules_present']) ) return;
+
+        $nonce = isset($_POST[self::NONCE]) ? sanitize_text_field(wp_unslash($_POST[self::NONCE])) : '';
+        if ( $nonce === '' || ! wp_verify_nonce($nonce, self::NONCE) ) return;
+        if ( ! current_user_can('edit_post', $post_id) ) return;
+
+        $raw_rules = $_POST['beeclear_ilm_rules'] ?? null;
+        if ( ! is_array($raw_rules) ) return;
+
+        foreach ($raw_rules as $rule){
+            if (!is_array($rule)) continue;
+            $phrase = isset($rule['phrase']) ? trim((string) wp_unslash($rule['phrase'])) : '';
+            if ($phrase === ''){
+                wp_die(
+                    esc_html__('Pole fraza nie może być puste.', 'internal-external-link-manager-premium'),
+                    esc_html__('Nie można zapisać.', 'internal-external-link-manager-premium'),
+                    array('back_link' => true)
+                );
+            }
+        }
+    }
+
+    public function block_empty_phrase_save($data, $postarr){
+        if ( ! is_admin() ) return $data;
+        if ( defined('DOING_AUTOSAVE') && DOING_AUTOSAVE ) return $data;
+        $post_id = isset($postarr['ID']) ? (int) $postarr['ID'] : 0;
+        if ( $post_id && (wp_is_post_autosave($post_id) || wp_is_post_revision($post_id)) ) return $data;
+
+        $settings = get_option(self::OPT_SETTINGS, array());
+        $pts = !empty($settings['process_post_types']) ? (array)$settings['process_post_types'] : array('post','page');
+        $post_type = isset($postarr['post_type']) ? (string) $postarr['post_type'] : '';
+        if ( $post_type !== '' && ! in_array($post_type, $pts, true) ) return $data;
+
+        $this->maybe_block_empty_phrase_save($post_id);
+
+        return $data;
     }
 
     public function save_post_rules($post_id){
