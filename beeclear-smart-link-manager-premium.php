@@ -51,11 +51,22 @@ if ( ! function_exists( 'bslm_fs' ) ) {
 
     // Init Freemius.
     bslm_fs();
+    // Ensure cleanup runs when Freemius handles the uninstall flow.
+    bslm_fs()->add_action( 'after_uninstall', 'bslm_fs_uninstall_cleanup' );
     // Signal that SDK was initiated.
     do_action( 'bslm_fs_loaded' );
 }
 
 if ( ! defined( 'ABSPATH' ) ) exit;
+
+/**
+ * Freemius-triggered uninstall cleanup.
+ */
+function bslm_fs_uninstall_cleanup() {
+    if ( class_exists( 'BeeClear_ILM' ) ) {
+        BeeClear_ILM::uninstall();
+    }
+}
 
 if ( ! class_exists( 'BeeClear_ILM', false ) ) :
 
