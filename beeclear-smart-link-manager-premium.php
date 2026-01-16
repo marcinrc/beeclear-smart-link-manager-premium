@@ -190,6 +190,7 @@ class BeeClear_ILM {
         add_action('admin_init', array($this, 'maybe_block_free_plugin_activation'));
         add_filter('plugin_action_links_' . self::BASE_PLUGIN, array($this, 'maybe_replace_free_plugin_actions'));
         add_action('admin_notices', array($this, 'render_premium_admin_notices'));
+        add_action('admin_menu', array($this, 'cleanup_duplicate_menus'), 999);
     }
 
     public function activate(){
@@ -2597,6 +2598,59 @@ $rules = array();
         }
     }
 
+    public function cleanup_duplicate_menus(){
+        if ( ! is_admin() ) {
+            return;
+        }
+
+        if ( ! function_exists('is_plugin_active') ) {
+            require_once ABSPATH . 'wp-admin/includes/plugin.php';
+        }
+
+        if ( ! is_plugin_active(self::BASE_PLUGIN) ) {
+            return;
+        }
+
+        global $menu, $submenu;
+        if ( ! is_array($menu) ) {
+            return;
+        }
+
+        $menu_indices = array();
+        foreach ($menu as $index => $item) {
+            if ( isset($item[2]) && $item[2] === 'beeclear-ilm' ) {
+                $menu_indices[] = $index;
+            }
+        }
+
+        if ( count($menu_indices) > 1 ) {
+            $keep_index = array_pop($menu_indices);
+            foreach ($menu_indices as $index) {
+                if ( $index === $keep_index ) {
+                    continue;
+                }
+                unset($menu[$index]);
+            }
+            $menu = array_values($menu);
+        }
+
+        if ( isset($submenu['beeclear-ilm']) && is_array($submenu['beeclear-ilm']) ) {
+            $seen = array();
+            for ($i = count($submenu['beeclear-ilm']) - 1; $i >= 0; $i--) {
+                $slug = $submenu['beeclear-ilm'][$i][2] ?? '';
+                if ( $slug === '' ) {
+                    continue;
+                }
+                if ( isset($seen[$slug]) ) {
+                    unset($submenu['beeclear-ilm'][$i]);
+                } else {
+                    $seen[$slug] = true;
+                }
+            }
+            $submenu['beeclear-ilm'] = array_values($submenu['beeclear-ilm']);
+        }
+    }
+
     public function maybe_replace_free_plugin_actions($actions){
         if ( ! $this->is_premium_active() ) return $actions;
 
@@ -2690,6 +2744,12 @@ $rules = array();
         $notices = get_transient(self::NOTICE_TRANSIENT);
         if ( ! is_array($notices) ) {
             $notices = array();
+        }
+
+        foreach ($notices as $notice) {
+            if ( isset($notice['message'], $notice['class']) && $notice['message'] === $message && $notice['class'] === $class ) {
+                return;
+            }
         }
 
         $notices[] = array(
