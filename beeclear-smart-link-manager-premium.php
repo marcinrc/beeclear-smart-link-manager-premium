@@ -21,7 +21,24 @@ if ( ! function_exists( 'bslm_fs' ) ) {
 
         if ( ! isset( $bslm_fs ) ) {
             // Include Freemius SDK.
-            require_once dirname( __FILE__ ) . '/vendor/start.php';
+            $freemius_start = dirname( __FILE__ ) . '/vendor/start.php';
+            if ( ! file_exists( $freemius_start ) ) {
+                $bslm_fs = false;
+                add_action(
+                    'admin_notices',
+                    function() {
+                        echo '<div class="notice notice-error"><p>';
+                        echo esc_html__(
+                            'BeeClear Smart Link Manager Premium: Missing Freemius SDK. Please re-install the plugin package (vendor/start.php not found).',
+                            'beeclear-smart-link-manager-premium'
+                        );
+                        echo '</p></div>';
+                    }
+                );
+                return $bslm_fs;
+            }
+
+            require_once $freemius_start;
 
             $bslm_fs = fs_dynamic_init( array(
                 'id'                  => '23044',
@@ -50,11 +67,13 @@ if ( ! function_exists( 'bslm_fs' ) ) {
     }
 
     // Init Freemius.
-    bslm_fs();
-    // Ensure cleanup runs when Freemius handles the uninstall flow.
-    bslm_fs()->add_action( 'after_uninstall', 'bslm_fs_uninstall_cleanup' );
-    // Signal that SDK was initiated.
-    do_action( 'bslm_fs_loaded' );
+    $bslm_fs_instance = bslm_fs();
+    if ( $bslm_fs_instance ) {
+        // Ensure cleanup runs when Freemius handles the uninstall flow.
+        $bslm_fs_instance->add_action( 'after_uninstall', 'bslm_fs_uninstall_cleanup' );
+        // Signal that SDK was initiated.
+        do_action( 'bslm_fs_loaded' );
+    }
 }
 
 if ( ! defined( 'ABSPATH' ) ) exit;
