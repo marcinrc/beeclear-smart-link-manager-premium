@@ -2660,7 +2660,7 @@ $rules = array();
     public function maybe_replace_free_plugin_actions($actions){
         if ( ! $this->is_premium_active() ) return $actions;
 
-        $message = esc_html__('Premium version is active; free features are paused.', 'beeclear-smart-link-manager-premium');
+        $message = esc_html__('Premium version is active', 'beeclear-smart-link-manager-premium');
         $premium_message = '<span class="beeclear-ilm-premium-active">' . $message . '</span>';
 
         if (in_array($premium_message, $actions, true)) {
