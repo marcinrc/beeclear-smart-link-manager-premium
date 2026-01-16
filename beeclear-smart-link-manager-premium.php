@@ -21,7 +21,7 @@ if ( ! function_exists( 'bslm_fs' ) ) {
 
         if ( ! isset( $bslm_fs ) ) {
             // Include Freemius SDK.
-            require_once dirname( __FILE__ ) . '/vendor/freemius/start.php';
+            require_once dirname( __FILE__ ) . '/vendor/start.php';
 
             $bslm_fs = fs_dynamic_init( array(
                 'id'                  => '23044',
