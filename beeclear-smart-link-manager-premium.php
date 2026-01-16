@@ -186,7 +186,7 @@ class BeeClear_ILM {
 
         add_action('admin_init', array($this,'register_admin_columns'));
 
-        add_action('admin_init', array($this, 'disable_free_version_if_active'));
+        add_action('plugins_loaded', array($this, 'maybe_disable_free_plugin_features'), 20);
         add_action('admin_init', array($this, 'maybe_block_free_plugin_activation'));
         add_filter('plugin_action_links_' . self::BASE_PLUGIN, array($this, 'maybe_replace_free_plugin_actions'));
         add_action('admin_notices', array($this, 'render_premium_admin_notices'));
@@ -227,7 +227,7 @@ class BeeClear_ILM {
         add_option(self::OPT_DBVER, self::VERSION, '', false);
         $this->rebuild_index();
 
-        $this->disable_free_version_if_active();
+        $this->maybe_disable_free_plugin_features(true);
     }
 
     public function deactivate(){
@@ -2541,14 +2541,19 @@ $rules = array();
         }
     }
 
-    public function disable_free_version_if_active(){
+    public function maybe_disable_free_plugin_features($is_activation = false){
         if ( ! function_exists('is_plugin_active') ) {
             require_once ABSPATH . 'wp-admin/includes/plugin.php';
         }
 
         if ( is_plugin_active(self::BASE_PLUGIN) ) {
-            deactivate_plugins(array(self::BASE_PLUGIN));
-            $this->enqueue_premium_notice(__('Internal & External Link Manager has been deactivated because the premium version is active.', 'beeclear-smart-link-manager-premium'), 'warning');
+            $this->remove_free_plugin_hooks();
+            if ( $is_activation || is_admin() ) {
+                $this->enqueue_premium_notice(
+                    __('Internal & External Link Manager remains active, but its features are paused while the premium version is running.', 'beeclear-smart-link-manager-premium'),
+                    'warning'
+                );
+            }
         }
     }
 
@@ -2568,9 +2573,10 @@ $rules = array();
         }
 
         if ( 'activate' === $action && self::BASE_PLUGIN === $plugin && $this->is_premium_active() ) {
-            $this->enqueue_premium_notice(__('You cannot activate the free Internal & External Link Manager while the premium version is active.', 'beeclear-smart-link-manager-premium'));
-            wp_safe_redirect(admin_url('plugins.php'));
-            exit;
+            $this->enqueue_premium_notice(
+                __('Internal & External Link Manager was activated, but its features are paused while the premium version is running.', 'beeclear-smart-link-manager-premium'),
+                'warning'
+            );
         }
     }
 
@@ -2594,16 +2600,90 @@ $rules = array();
     public function maybe_replace_free_plugin_actions($actions){
         if ( ! $this->is_premium_active() ) return $actions;
 
-        $message = esc_html__('Premium version is activated', 'beeclear-smart-link-manager-premium');
+        $message = esc_html__('Premium version is active; free features are paused.', 'beeclear-smart-link-manager-premium');
         $premium_message = '<span class="beeclear-ilm-premium-active">' . $message . '</span>';
 
-        unset($actions['activate']);
-
-        if (in_array($premium_message, $actions, true)) return $actions;
+        if (in_array($premium_message, $actions, true)) {
+            return $actions;
+        }
 
         array_unshift($actions, $premium_message);
 
         return $actions;
+    }
+
+    private function remove_free_plugin_hooks() {
+        if ( ! function_exists('is_plugin_active') ) {
+            require_once ABSPATH . 'wp-admin/includes/plugin.php';
+        }
+
+        if ( ! is_plugin_active(self::BASE_PLUGIN) ) {
+            return;
+        }
+
+        global $wp_filter;
+        if ( ! is_array($wp_filter) ) {
+            return;
+        }
+
+        $free_plugin_dir = trailingslashit(WP_PLUGIN_DIR) . 'beeclear-smart-link-manager/';
+
+        foreach ($wp_filter as $tag => $hook) {
+            if ( ! is_object($hook) || empty($hook->callbacks) ) {
+                continue;
+            }
+
+            foreach ($hook->callbacks as $priority => $callbacks) {
+                foreach ($callbacks as $callback) {
+                    if ( empty($callback['function']) ) {
+                        continue;
+                    }
+
+                    $callback_file = $this->get_callback_file($callback['function']);
+                    if ( $callback_file && strpos($callback_file, $free_plugin_dir) === 0 ) {
+                        remove_filter($tag, $callback['function'], $priority);
+                    }
+                }
+            }
+        }
+    }
+
+    private function get_callback_file($callback) {
+        if ( is_string($callback) ) {
+            if ( ! function_exists($callback) ) {
+                return null;
+            }
+
+            $reflection = new ReflectionFunction($callback);
+            return $reflection->getFileName();
+        }
+
+        if ( is_array($callback) && count($callback) === 2 ) {
+            if ( is_object($callback[0]) ) {
+                if ( ! method_exists($callback[0], $callback[1]) ) {
+                    return null;
+                }
+
+                $reflection = new ReflectionMethod($callback[0], $callback[1]);
+                return $reflection->getFileName();
+            }
+
+            if ( is_string($callback[0]) && class_exists($callback[0]) ) {
+                if ( ! method_exists($callback[0], $callback[1]) ) {
+                    return null;
+                }
+
+                $reflection = new ReflectionMethod($callback[0], $callback[1]);
+                return $reflection->getFileName();
+            }
+        }
+
+        if ( $callback instanceof Closure ) {
+            $reflection = new ReflectionFunction($callback);
+            return $reflection->getFileName();
+        }
+
+        return null;
     }
 
     private function enqueue_premium_notice($message, $class = 'error'){
