@@ -125,6 +125,7 @@ class BeeClear_ILM {
      * Transient name used to queue admin notices across redirects.
      */
     const NOTICE_TRANSIENT = 'beeclear_ilm_premium_notices';
+    const NOTICE_SHOWN_OPTION = 'beeclear_ilm_premium_notice_shown';
 
     // === Options / keys ===
     const OPT_SETTINGS        = 'beeclear_ilm_settings';
@@ -2550,9 +2551,11 @@ $rules = array();
         if ( is_plugin_active(self::BASE_PLUGIN) ) {
             $this->remove_free_plugin_hooks();
             if ( $is_activation || is_admin() ) {
-                $this->enqueue_premium_notice(
+                $this->enqueue_premium_notice_once(
                     __('Internal & External Link Manager remains active, but its features are paused while the premium version is running.', 'beeclear-smart-link-manager-premium'),
-                    'warning'
+                    'warning',
+                    'free-plugin-paused',
+                    true
                 );
             }
         }
@@ -2591,6 +2594,9 @@ $rules = array();
 
         foreach ($notices as $notice){
             $class = empty($notice['class']) ? 'notice notice-error' : 'notice notice-' . sanitize_html_class($notice['class']);
+            if ( ! empty($notice['dismissible']) ) {
+                $class .= ' is-dismissible';
+            }
             $message = isset($notice['message']) ? $notice['message'] : '';
             if ( empty($message) ) continue;
 
@@ -2740,7 +2746,7 @@ $rules = array();
         return null;
     }
 
-    private function enqueue_premium_notice($message, $class = 'error'){
+    private function enqueue_premium_notice($message, $class = 'error', $dismissible = false){
         $notices = get_transient(self::NOTICE_TRANSIENT);
         if ( ! is_array($notices) ) {
             $notices = array();
@@ -2753,11 +2759,24 @@ $rules = array();
         }
 
         $notices[] = array(
-            'class'   => $class,
-            'message' => $message,
+            'class'       => $class,
+            'message'     => $message,
+            'dismissible' => (bool) $dismissible,
         );
 
         set_transient(self::NOTICE_TRANSIENT, $notices, 60);
+    }
+
+    private function enqueue_premium_notice_once($message, $class, $notice_key, $dismissible = false){
+        $shown_notices = get_option(self::NOTICE_SHOWN_OPTION, array());
+        if ( isset($shown_notices[$notice_key]) && $shown_notices[$notice_key] ) {
+            return;
+        }
+
+        $this->enqueue_premium_notice($message, $class, $dismissible);
+
+        $shown_notices[$notice_key] = true;
+        update_option(self::NOTICE_SHOWN_OPTION, $shown_notices, false);
     }
 
     private function is_premium_active(){
