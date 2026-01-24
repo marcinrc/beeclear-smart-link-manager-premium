@@ -2631,6 +2631,13 @@ $rules = array();
             return;
         }
 
+        $allowed_submenus = array(
+            'beeclear-ilm' => true,
+            'beeclear-ilm-external' => true,
+            'beeclear-ilm-internal-overview' => true,
+            'beeclear-ilm-impex' => true,
+        );
+
         $menu_indices = array();
         foreach ($menu as $index => $item) {
             if ( isset($item[2]) && $item[2] === 'beeclear-ilm' ) {
@@ -2654,6 +2661,10 @@ $rules = array();
             for ($i = count($submenu['beeclear-ilm']) - 1; $i >= 0; $i--) {
                 $slug = $submenu['beeclear-ilm'][$i][2] ?? '';
                 if ( $slug === '' ) {
+                    continue;
+                }
+                if ( ! isset($allowed_submenus[$slug]) ) {
+                    unset($submenu['beeclear-ilm'][$i]);
                     continue;
                 }
                 if ( isset($seen[$slug]) ) {
