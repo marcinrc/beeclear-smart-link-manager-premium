@@ -2676,6 +2676,13 @@ $rules = array();
             $submenu['beeclear-ilm'] = array_values($submenu['beeclear-ilm']);
         }
 
+        if ( function_exists('get_plugin_page_hookname') ) {
+            $toplevel_hook = get_plugin_page_hookname('beeclear-ilm', '');
+            if ( $toplevel_hook ) {
+                $this->remove_free_plugin_callbacks_for_hook($toplevel_hook);
+            }
+        }
+
         if ( ! empty($submenu['beeclear-ilm']) && function_exists('get_plugin_page_hookname') ) {
             foreach ( $submenu['beeclear-ilm'] as $item ) {
                 $slug = $item[2] ?? '';
