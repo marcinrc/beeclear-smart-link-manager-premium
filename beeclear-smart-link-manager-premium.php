@@ -151,6 +151,7 @@ class BeeClear_ILM {
         register_deactivation_hook(__FILE__, array($this, 'deactivate'));
         register_uninstall_hook(__FILE__, array('BeeClear_ILM','uninstall'));
 
+        add_action('init', array($this, 'load_textdomain'), 5);
         add_action('init', array($this, 'maybe_upgrade'), 20);
 
         add_action('admin_menu', array($this, 'admin_menu'));
@@ -230,6 +231,14 @@ class BeeClear_ILM {
         $this->rebuild_index();
 
         $this->maybe_disable_free_plugin_features(true);
+    }
+
+    public function load_textdomain() {
+        load_plugin_textdomain(
+            'beeclear-smart-link-manager-premium',
+            false,
+            dirname(plugin_basename(__FILE__)) . '/languages'
+        );
     }
 
     public function deactivate(){
