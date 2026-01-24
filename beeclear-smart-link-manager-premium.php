@@ -2533,10 +2533,9 @@ JS;
                         $flags |= LIBXML_HTML_NOIMPLIED;
                     }
                     $dom = new DOMDocument();
-                    $enc = 'UTF-8';
-                    $wrapped = '<div>' . (( function_exists( 'mb_convert_encoding' ) ? mb_convert_encoding( $content, 'HTML-ENTITIES', $enc ) : $content )) . '</div>';
+                    $wrapped = '<div>' . $content . '</div>';
                     libxml_use_internal_errors( true );
-                    $loaded = @$dom->loadHTML( $wrapped, $flags );
+                    $loaded = @$dom->loadHTML( '<?xml encoding="UTF-8">' . $wrapped, $flags );
                     libxml_clear_errors();
                     if ( !$loaded ) {
                         return $content;
