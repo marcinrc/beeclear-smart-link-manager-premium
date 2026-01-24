@@ -344,7 +344,7 @@ class BeeClear_ILM {
 
     public function admin_menu(){
         $cap = 'manage_options';
-        $title = __('Internal & External Link Manager', 'beeclear-smart-link-manager-premium');
+        $title = __('BeeClear Smart Link Manager', 'beeclear-smart-link-manager-premium');
         add_menu_page($title,$title,$cap,'beeclear-ilm',array($this,'render_dashboard'),'dashicons-admin-links',59);
         add_submenu_page('beeclear-ilm', __('Global settings', 'beeclear-smart-link-manager-premium'), __('Global settings', 'beeclear-smart-link-manager-premium'), $cap, 'beeclear-ilm', array($this,'render_dashboard'));
         add_submenu_page('beeclear-ilm', __('External linking', 'beeclear-smart-link-manager-premium'), __('External linking', 'beeclear-smart-link-manager-premium'), $cap, 'beeclear-ilm-external', array($this,'render_external'));
@@ -1707,7 +1707,7 @@ JS;
         //     '</span></p>';
 
         $settings_url = esc_url(admin_url('admin.php?page=beeclear-ilm'));
-        $menu_name = esc_html__('Internal & External Link Manager', 'beeclear-smart-link-manager-premium');
+        $menu_name = esc_html__('BeeClear Smart Link Manager', 'beeclear-smart-link-manager-premium');
         echo '<hr><p><strong>'.esc_html__('Admin menu name:', 'beeclear-smart-link-manager-premium').'</strong> '
             . '<a href="' . esc_url($settings_url) . '" target="_blank" rel="noopener noreferrer">' . esc_html($menu_name) . '</a></p>';
         echo '<p><strong>'.esc_html__('Author:', 'beeclear-smart-link-manager-premium').'</strong> <a href="https://beeclear.pl">BeeClear</a></p>';
@@ -2552,7 +2552,7 @@ $rules = array();
             $this->remove_free_plugin_hooks();
             if ( $is_activation || is_admin() ) {
                 $this->enqueue_premium_notice_once(
-                    __('Internal & External Link Manager remains active, but its features are paused while the premium version is running.', 'beeclear-smart-link-manager-premium'),
+                    __('BeeClear Smart Link Manager remains active, but its features are paused while the premium version is running.', 'beeclear-smart-link-manager-premium'),
                     'warning',
                     'free-plugin-paused',
                     true
@@ -2578,7 +2578,7 @@ $rules = array();
 
         if ( 'activate' === $action && self::BASE_PLUGIN === $plugin && $this->is_premium_active() ) {
             $this->enqueue_premium_notice(
-                __('Internal & External Link Manager was activated, but its features are paused while the premium version is running.', 'beeclear-smart-link-manager-premium'),
+                __('BeeClear Smart Link Manager was activated, but its features are paused while the premium version is running.', 'beeclear-smart-link-manager-premium'),
                 'warning'
             );
         }
