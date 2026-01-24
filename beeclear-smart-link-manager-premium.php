@@ -2664,6 +2664,19 @@ $rules = array();
             }
             $submenu['beeclear-ilm'] = array_values($submenu['beeclear-ilm']);
         }
+
+        if ( ! empty($submenu['beeclear-ilm']) && function_exists('get_plugin_page_hookname') ) {
+            foreach ( $submenu['beeclear-ilm'] as $item ) {
+                $slug = $item[2] ?? '';
+                if ( $slug === '' ) {
+                    continue;
+                }
+                $hookname = get_plugin_page_hookname($slug, 'beeclear-ilm');
+                if ( $hookname ) {
+                    $this->remove_free_plugin_callbacks_for_hook($hookname);
+                }
+            }
+        }
     }
 
     public function maybe_replace_free_plugin_actions($actions){
@@ -2712,6 +2725,40 @@ $rules = array();
                     if ( $callback_file && strpos($callback_file, $free_plugin_dir) === 0 ) {
                         remove_filter($tag, $callback['function'], $priority);
                     }
+                }
+            }
+        }
+    }
+
+    private function remove_free_plugin_callbacks_for_hook($hookname) {
+        if ( empty($hookname) ) {
+            return;
+        }
+
+        if ( ! function_exists('is_plugin_active') ) {
+            require_once ABSPATH . 'wp-admin/includes/plugin.php';
+        }
+
+        if ( ! is_plugin_active(self::BASE_PLUGIN) ) {
+            return;
+        }
+
+        global $wp_filter;
+        if ( ! isset($wp_filter[$hookname]) || ! is_object($wp_filter[$hookname]) ) {
+            return;
+        }
+
+        $free_plugin_dir = trailingslashit(WP_PLUGIN_DIR) . 'beeclear-smart-link-manager/';
+
+        foreach ( $wp_filter[$hookname]->callbacks as $priority => $callbacks ) {
+            foreach ( $callbacks as $callback ) {
+                if ( empty($callback['function']) ) {
+                    continue;
+                }
+
+                $callback_file = $this->get_callback_file($callback['function']);
+                if ( $callback_file && strpos($callback_file, $free_plugin_dir) === 0 ) {
+                    remove_filter($hookname, $callback['function'], $priority);
                 }
             }
         }
@@ -4160,6 +4207,12 @@ $rules = array();
     }
 
     public function render_external(){
+        static $rendered = false;
+        if ( $rendered ) {
+            return;
+        }
+        $rendered = true;
+
         if ( ! current_user_can('manage_options') ) return;
 
         if( isset($_POST['beeclear_ilm_save_external']) && check_admin_referer(self::NONCE, self::NONCE) ){
