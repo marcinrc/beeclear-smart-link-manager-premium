@@ -189,6 +189,7 @@ class BeeClear_ILM {
         add_action('admin_init', array($this,'register_admin_columns'));
 
         add_action('plugins_loaded', array($this, 'maybe_disable_free_plugin_features'), 20);
+        add_action('current_screen', array($this, 'maybe_block_free_plugin_screen_output'));
         add_action('admin_init', array($this, 'maybe_block_free_plugin_activation'));
         add_filter('plugin_action_links_' . self::BASE_PLUGIN, array($this, 'maybe_replace_free_plugin_actions'));
         add_action('admin_notices', array($this, 'render_premium_admin_notices'));
@@ -2593,6 +2594,32 @@ $rules = array();
         }
     }
 
+    public function maybe_block_free_plugin_screen_output($screen){
+        if ( ! is_admin() ) {
+            return;
+        }
+
+        if ( ! function_exists('is_plugin_active') ) {
+            require_once ABSPATH . 'wp-admin/includes/plugin.php';
+        }
+
+        if ( ! is_plugin_active(self::BASE_PLUGIN) ) {
+            return;
+        }
+
+        if ( ! is_object($screen) || empty($screen->id) ) {
+            return;
+        }
+
+        if ( strpos($screen->id, 'beeclear-ilm') === false ) {
+            return;
+        }
+
+        $this->remove_free_plugin_hooks();
+        $this->remove_free_plugin_callbacks_for_hook($screen->id);
+        $this->remove_free_plugin_callbacks_for_hook('load-' . $screen->id);
+    }
+
     public function render_premium_admin_notices(){
         $notices = get_transient(self::NOTICE_TRANSIENT);
         if ( ! is_array($notices) ) {
@@ -2631,6 +2658,13 @@ $rules = array();
             return;
         }
 
+        $allowed_submenus = array(
+            'beeclear-ilm' => true,
+            'beeclear-ilm-external' => true,
+            'beeclear-ilm-internal-overview' => true,
+            'beeclear-ilm-impex' => true,
+        );
+
         $menu_indices = array();
         foreach ($menu as $index => $item) {
             if ( isset($item[2]) && $item[2] === 'beeclear-ilm' ) {
@@ -2656,6 +2690,10 @@ $rules = array();
                 if ( $slug === '' ) {
                     continue;
                 }
+                if ( ! isset($allowed_submenus[$slug]) ) {
+                    unset($submenu['beeclear-ilm'][$i]);
+                    continue;
+                }
                 if ( isset($seen[$slug]) ) {
                     unset($submenu['beeclear-ilm'][$i]);
                 } else {
@@ -2663,6 +2701,19 @@ $rules = array();
                 }
             }
             $submenu['beeclear-ilm'] = array_values($submenu['beeclear-ilm']);
+        }
+
+        $this->remove_free_plugin_hooks();
+
+        if ( function_exists('get_plugin_page_hookname') ) {
+            $toplevel_hook = get_plugin_page_hookname('beeclear-ilm', '');
+            if ( $toplevel_hook ) {
+                $this->remove_free_plugin_callbacks_for_hook($toplevel_hook);
+            }
+            $submenu_hook = get_plugin_page_hookname('beeclear-ilm', 'beeclear-ilm');
+            if ( $submenu_hook ) {
+                $this->remove_free_plugin_callbacks_for_hook($submenu_hook);
+            }
         }
 
         if ( ! empty($submenu['beeclear-ilm']) && function_exists('get_plugin_page_hookname') ) {
