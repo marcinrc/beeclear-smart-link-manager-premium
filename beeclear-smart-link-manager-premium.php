@@ -2533,10 +2533,13 @@ JS;
                         $flags |= LIBXML_HTML_NOIMPLIED;
                     }
                     $dom = new DOMDocument();
-                    $enc = 'UTF-8';
-                    $wrapped = '<div>' . (( function_exists( 'mb_convert_encoding' ) ? mb_convert_encoding( $content, 'HTML-ENTITIES', $enc ) : $content )) . '</div>';
+                    $wrapped_content = $content;
+                    if ( function_exists( 'mb_encode_numericentity' ) ) {
+                        $wrapped_content = mb_encode_numericentity( $wrapped_content, array( 0x80, 0x10FFFF, 0, 0xFFFF ), 'UTF-8' );
+                    }
+                    $wrapped = '<div>' . $wrapped_content . '</div>';
                     libxml_use_internal_errors( true );
-                    $loaded = @$dom->loadHTML( $wrapped, $flags );
+                    $loaded = @$dom->loadHTML( '<?xml encoding="UTF-8">' . $wrapped, $flags );
                     libxml_clear_errors();
                     if ( !$loaded ) {
                         return $content;
