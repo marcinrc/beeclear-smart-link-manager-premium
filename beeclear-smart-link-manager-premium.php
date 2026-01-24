@@ -2533,11 +2533,7 @@ JS;
                         $flags |= LIBXML_HTML_NOIMPLIED;
                     }
                     $dom = new DOMDocument();
-                    $wrapped_content = $content;
-                    if ( function_exists( 'mb_encode_numericentity' ) ) {
-                        $wrapped_content = mb_encode_numericentity( $wrapped_content, array( 0x80, 0x10FFFF, 0, 0xFFFF ), 'UTF-8' );
-                    }
-                    $wrapped = '<div>' . $wrapped_content . '</div>';
+                    $wrapped = '<div>' . $content . '</div>';
                     libxml_use_internal_errors( true );
                     $loaded = @$dom->loadHTML( '<?xml encoding="UTF-8">' . $wrapped, $flags );
                     libxml_clear_errors();
