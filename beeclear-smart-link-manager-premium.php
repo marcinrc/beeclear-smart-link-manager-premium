@@ -2703,16 +2703,10 @@ $rules = array();
             $submenu['beeclear-ilm'] = array_values($submenu['beeclear-ilm']);
         }
 
-        $this->remove_free_plugin_hooks();
-
         if ( function_exists('get_plugin_page_hookname') ) {
             $toplevel_hook = get_plugin_page_hookname('beeclear-ilm', '');
             if ( $toplevel_hook ) {
                 $this->remove_free_plugin_callbacks_for_hook($toplevel_hook);
-            }
-            $submenu_hook = get_plugin_page_hookname('beeclear-ilm', 'beeclear-ilm');
-            if ( $submenu_hook ) {
-                $this->remove_free_plugin_callbacks_for_hook($submenu_hook);
             }
         }
 
