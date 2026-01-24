@@ -2847,6 +2847,42 @@ $rules = array();
         return null;
     }
 
+    private function enforce_premium_menu_callbacks() {
+        if ( ! function_exists('get_plugin_page_hookname') || ! function_exists('remove_all_actions') ) {
+            return;
+        }
+
+        $callbacks = array(
+            'beeclear-ilm' => array($this, 'render_dashboard'),
+            'beeclear-ilm-external' => array($this, 'render_external'),
+            'beeclear-ilm-internal-overview' => array($this, 'render_internal_overview'),
+            'beeclear-ilm-impex' => array($this, 'render_impex'),
+        );
+
+        $toplevel_hook = get_plugin_page_hookname('beeclear-ilm', '');
+        if ( $toplevel_hook ) {
+            remove_all_actions($toplevel_hook);
+            add_action($toplevel_hook, $callbacks['beeclear-ilm']);
+        }
+
+        $submenu_hook = get_plugin_page_hookname('beeclear-ilm', 'beeclear-ilm');
+        if ( $submenu_hook ) {
+            remove_all_actions($submenu_hook);
+            add_action($submenu_hook, $callbacks['beeclear-ilm']);
+        }
+
+        foreach ( $callbacks as $slug => $callback ) {
+            if ( $slug === 'beeclear-ilm' ) {
+                continue;
+            }
+            $hookname = get_plugin_page_hookname($slug, 'beeclear-ilm');
+            if ( $hookname ) {
+                remove_all_actions($hookname);
+                add_action($hookname, $callback);
+            }
+        }
+    }
+
     private function enqueue_premium_notice($message, $class = 'error', $dismissible = false){
         $notices = get_transient(self::NOTICE_TRANSIENT);
         if ( ! is_array($notices) ) {
