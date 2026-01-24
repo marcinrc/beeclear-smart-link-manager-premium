@@ -189,6 +189,7 @@ class BeeClear_ILM {
         add_action('admin_init', array($this,'register_admin_columns'));
 
         add_action('plugins_loaded', array($this, 'maybe_disable_free_plugin_features'), 20);
+        add_action('current_screen', array($this, 'maybe_block_free_plugin_screen_output'));
         add_action('admin_init', array($this, 'maybe_block_free_plugin_activation'));
         add_filter('plugin_action_links_' . self::BASE_PLUGIN, array($this, 'maybe_replace_free_plugin_actions'));
         add_action('admin_notices', array($this, 'render_premium_admin_notices'));
@@ -2591,6 +2592,32 @@ $rules = array();
                 'warning'
             );
         }
+    }
+
+    public function maybe_block_free_plugin_screen_output($screen){
+        if ( ! is_admin() ) {
+            return;
+        }
+
+        if ( ! function_exists('is_plugin_active') ) {
+            require_once ABSPATH . 'wp-admin/includes/plugin.php';
+        }
+
+        if ( ! is_plugin_active(self::BASE_PLUGIN) ) {
+            return;
+        }
+
+        if ( ! is_object($screen) || empty($screen->id) ) {
+            return;
+        }
+
+        if ( strpos($screen->id, 'beeclear-ilm') === false ) {
+            return;
+        }
+
+        $this->remove_free_plugin_hooks();
+        $this->remove_free_plugin_callbacks_for_hook($screen->id);
+        $this->remove_free_plugin_callbacks_for_hook('load-' . $screen->id);
     }
 
     public function render_premium_admin_notices(){
