@@ -2631,6 +2631,13 @@ $rules = array();
             return;
         }
 
+        $allowed_submenus = array(
+            'beeclear-ilm' => true,
+            'beeclear-ilm-external' => true,
+            'beeclear-ilm-internal-overview' => true,
+            'beeclear-ilm-impex' => true,
+        );
+
         $menu_indices = array();
         foreach ($menu as $index => $item) {
             if ( isset($item[2]) && $item[2] === 'beeclear-ilm' ) {
@@ -2656,6 +2663,10 @@ $rules = array();
                 if ( $slug === '' ) {
                     continue;
                 }
+                if ( ! isset($allowed_submenus[$slug]) ) {
+                    unset($submenu['beeclear-ilm'][$i]);
+                    continue;
+                }
                 if ( isset($seen[$slug]) ) {
                     unset($submenu['beeclear-ilm'][$i]);
                 } else {
@@ -2663,6 +2674,13 @@ $rules = array();
                 }
             }
             $submenu['beeclear-ilm'] = array_values($submenu['beeclear-ilm']);
+        }
+
+        if ( function_exists('get_plugin_page_hookname') ) {
+            $toplevel_hook = get_plugin_page_hookname('beeclear-ilm', '');
+            if ( $toplevel_hook ) {
+                $this->remove_free_plugin_callbacks_for_hook($toplevel_hook);
+            }
         }
 
         if ( ! empty($submenu['beeclear-ilm']) && function_exists('get_plugin_page_hookname') ) {
