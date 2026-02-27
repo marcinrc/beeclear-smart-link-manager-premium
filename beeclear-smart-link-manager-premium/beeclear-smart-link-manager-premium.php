@@ -1152,7 +1152,7 @@ if ( !class_exists( 'BeeClear_ILM', false ) ) {
                 'scan_empty'          => __( 'Nothing to scan.', 'beeclear-smart-link-manager-premium' ),
                 'scan_running'        => __( 'Overview scan in progress…', 'beeclear-smart-link-manager-premium' ),
             );
-            wp_add_inline_script( 'jquery', 'window.BeeClearILM = window.BeeClearILM || {}; BeeClearILM.i18n = ' . wp_json_encode( $L ) . '; BeeClearILM.nonce = "' . wp_create_nonce( self::NONCE ) . '"; BeeClearILM.settingsUrl = "' . esc_url( admin_url( 'admin.php?page=beeclear-ilm' ) ) . '";', 'before' );
+            wp_add_inline_script( 'jquery', 'window.BeeClearILM = window.BeeClearILM || {}; BeeClearILM.i18n = ' . wp_json_encode( $L ) . '; BeeClearILM.nonce = ' . wp_json_encode( wp_create_nonce( self::NONCE ) ) . '; BeeClearILM.settingsUrl = ' . wp_json_encode( esc_url( admin_url( 'admin.php?page=beeclear-ilm' ) ) ) . ';', 'before' );
             $js = <<<'JS'
 jQuery(function($){
     var L = (window.BeeClearILM && BeeClearILM.i18n) ? BeeClearILM.i18n : {};
