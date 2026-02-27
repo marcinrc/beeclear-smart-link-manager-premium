@@ -76,6 +76,13 @@ if (!class_exists('BeeClear_ILM', false)):
             register_activation_hook(__FILE__, array($this, 'activate'));
             register_deactivation_hook(__FILE__, array($this, 'deactivate'));
 
+            // When the premium version is active this plugin stays enabled in WordPress
+            // but yields all functionality to it. Only the activation/deactivation hooks
+            // above are kept so the plugin can still be cleanly managed.
+            if ($this->is_premium_active()) {
+                return;
+            }
+
             add_action('init', array($this, 'maybe_upgrade'), 20);
 
             add_action('admin_menu', array($this, 'admin_menu'));
@@ -115,6 +122,14 @@ if (!class_exists('BeeClear_ILM', false)):
             add_action('wp_footer', array($this, 'render_timing_log_script'));
 
             add_action('admin_init', array($this, 'register_admin_columns'));
+        }
+
+        private function is_premium_active()
+        {
+            if (!function_exists('is_plugin_active')) {
+                require_once ABSPATH . 'wp-admin/includes/plugin.php';
+            }
+            return is_plugin_active('beeclear-smart-link-manager-premium/beeclear-smart-link-manager-premium.php');
         }
 
         public function activate()
@@ -1132,7 +1147,7 @@ public function admin_assets($hook)
                 'scan_empty' => __('Nothing to scan.', 'beeclear-smart-link-manager'),
                 'scan_running' => __('Overview scan in progress…', 'beeclear-smart-link-manager'),
             );
-            wp_add_inline_script('jquery', 'window.BeeClearILM = window.BeeClearILM || {}; BeeClearILM.i18n = ' . wp_json_encode($L) . '; BeeClearILM.nonce = "' . wp_create_nonce(self::NONCE) . '"; BeeClearILM.settingsUrl = "' . esc_url(admin_url('admin.php?page=beeclear-ilm')) . '";', 'before');
+            wp_add_inline_script('jquery', 'window.BeeClearILM = window.BeeClearILM || {}; BeeClearILM.i18n = ' . wp_json_encode($L) . '; BeeClearILM.nonce = ' . wp_json_encode(wp_create_nonce(self::NONCE)) . '; BeeClearILM.settingsUrl = ' . wp_json_encode(esc_url(admin_url('admin.php?page=beeclear-ilm'))) . ';', 'before');
 
             ob_start();
             ?>
