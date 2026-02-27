@@ -7,31 +7,51 @@ on:
       - bc
 
 jobs:
-  ftp-deploy:
-    name: FTP Deploy (BC)
+  detect-changes:
+    name: Detect changed plugins
+    runs-on: ubuntu-latest
+    outputs:
+      free_changed: ${{ steps.changes.outputs.free }}
+      premium_changed: ${{ steps.changes.outputs.premium }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Detect changes
+        id: changes
+        run: |
+          FREE=$(git diff --name-only HEAD~1 HEAD | grep -c '^beeclear-smart-link-manager/' || true)
+          PREMIUM=$(git diff --name-only HEAD~1 HEAD | grep -c '^beeclear-smart-link-manager-premium/' || true)
+          echo "free=$( [ "$FREE" -gt 0 ] && echo 'true' || echo 'false' )" >> $GITHUB_OUTPUT
+          echo "premium=$( [ "$PREMIUM" -gt 0 ] && echo 'true' || echo 'false' )" >> $GITHUB_OUTPUT
+
+  deploy-free:
+    name: Deploy FREE plugin
+    needs: detect-changes
+    if: needs.detect-changes.outputs.free_changed == 'true'
     runs-on: ubuntu-latest
     strategy:
       max-parallel: 1
       matrix:
         server_dir:
-          - /public_html/wp-content/plugins/beeclear-smart-link-manager-premium/
-          - /public_html/demo/wp-content/plugins/beeclear-smart-link-manager-premium/
-          - /public_html/en/wp-content/plugins/beeclear-smart-link-manager-premium/
-          
-
+          - /public_html/wp-content/plugins/
+          - /public_html/demo/wp-content/plugins/
+          - /public_html/en/wp-content/plugins/
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Upload to FTP (${{ matrix.server_dir }})
+      - name: Upload FREE to FTP (${{ matrix.server_dir }})
         uses: SamKirkland/FTP-Deploy-Action@v4.3.4
         with:
           server: ${{ secrets.FTP_HOST }}
           username: ${{ secrets.FTP_USERNAME }}
           password: ${{ secrets.FTP_PASSWORD }}
           protocol: ftp
-          local-dir: ./
-          server-dir: ${{ matrix.server_dir }}
+          local-dir: ./beeclear-smart-link-manager/
+          server-dir: ${{ matrix.server_dir }}beeclear-smart-link-manager/
           exclude: |
             **/.git*
             **/.git*/**
@@ -42,3 +62,41 @@ jobs:
             **/README*
             **/tests/**
             **/.ftp-deploy-sync-state.json
+
+  deploy-premium:
+    name: Deploy PREMIUM plugin
+    needs: detect-changes
+    if: needs.detect-changes.outputs.premium_changed == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      max-parallel: 1
+      matrix:
+        server_dir:
+          - /public_html/wp-content/plugins/
+          - /public_html/demo/wp-content/plugins/
+          - /public_html/en/wp-content/plugins/
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Upload PREMIUM to FTP (${{ matrix.server_dir }})
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.4
+        with:
+          server: ${{ secrets.FTP_HOST }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          protocol: ftp
+          local-dir: ./beeclear-smart-link-manager-premium/
+          server-dir: ${{ matrix.server_dir }}beeclear-smart-link-manager-premium/
+          exclude: |
+            **/.git*
+            **/.git*/**
+            **/.github*
+            **/.github*/**
+            **/node_modules/**
+            **/*.md
+            **/README*
+            **/tests/**
+            **/.ftp-deploy-sync-state.json
+            vendor/
+            vendor/**
