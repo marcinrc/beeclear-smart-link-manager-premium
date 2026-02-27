@@ -116,7 +116,6 @@ if (!class_exists('BeeClear_ILM', false)):
 
             add_action('admin_init', array($this, 'maybe_handle_promo_dismissal'));
             add_action('admin_notices', array($this, 'render_promo_notice'));
-            add_action('admin_enqueue_scripts', array($this, 'admin_assets'));
 
             add_action('wp_enqueue_scripts', array($this, 'frontend_assets'));
             add_action('wp_footer', array($this, 'render_timing_log_script'));
@@ -165,8 +164,6 @@ if (!class_exists('BeeClear_ILM', false)):
             add_option(self::OPT_OVERVIEW_SCAN_SUMMARY, array(), '', false);
             add_option(self::OPT_ACTIVITY_LOG, array(), '', false);
             add_option(self::OPT_DBVER, self::VERSION, '', false);
-            delete_metadata('user', 0, self::META_PROMO_DISMISSED_AT, '', true);
-            delete_metadata('user', 0, self::META_PROMO_DISMISSED, '', true);
             $this->rebuild_index();
         }
 
@@ -975,7 +972,7 @@ if (!class_exists('BeeClear_ILM', false)):
             if (!is_string($text) || $text === '')
                 return false;
             foreach ((array) $patterns as $pat) {
-                if (@preg_match($pat, $text) !== 1)
+                if (preg_match($pat, $text) !== 1)
                     return false;
             }
             return true;
@@ -1063,10 +1060,10 @@ if (!class_exists('BeeClear_ILM', false)):
             <li><strong><?php esc_html_e('Define the priority', 'beeclear-smart-link-manager'); ?></strong> <?php esc_html_e('of your pages for internal linking.', 'beeclear-smart-link-manager'); ?></li>
         </ul>
         <p><?php esc_html_e('...and many more!', 'beeclear-smart-link-manager'); ?></p>
-		<p><a href="<?php echo esc_url('https://beeclear.pl/en/internal-external-link-manager/'); ?>"class="button button-primary" target="_blank" rel="noopener noreferrer">
-        <?php esc_html_e('Try for FREE', 'beeclear-smart-link-manager'); ?>
-    </a>
-</p>
+	    <p><a href="<?php echo esc_url('https://beeclear.pl/en/internal-external-link-manager/'); ?>" class="button button-primary" target="_blank" rel="noopener noreferrer">
+            <?php esc_html_e('Learn more', 'beeclear-smart-link-manager'); ?>
+        </a>
+    </p>
     </div>
     <?php
     $script = "document.addEventListener('click', function (event) {\n"
@@ -4305,7 +4302,7 @@ jQuery(function($){
                             $preview_items[] = esc_html($ph) . ($badge ? ' <span style="opacity:.6">[' . esc_html($badge) . ']</span>' : '');
                         }
                         echo '<strong>' . intval($count) . '</strong>';
-                        echo '<div\1>' . wp_kses_post(implode(', ', $preview_items) . ($count > 3 ? '…' : '')) . '</div>';
+                        echo '<div>' . wp_kses_post(implode(', ', $preview_items) . ($count > 3 ? '…' : '')) . '</div>';
                     }
                     if (!empty(get_post_meta($post_id, self::META_NO_OUT, true))) {
                         echo '<div style="margin-top:4px"><span class="dashicons dashicons-lock" style="vertical-align:middle"></span> <span style="opacity:.8">' . esc_html__('No outgoing links', 'beeclear-smart-link-manager') . '</span></div>';

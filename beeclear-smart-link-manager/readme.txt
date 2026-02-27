@@ -79,5 +79,12 @@ Use the import/export tools to move rules between environments without re-creati
 
 == Changelog ==
 
+= 1.8 =
+* Fixed invalid HTML in admin column output.
+* Removed duplicate admin_enqueue_scripts hook registration.
+* Improved promo notice: button label updated to avoid misleading wording.
+* Removed aggressive reset of per-user promo dismissal on plugin activation.
+* Removed error suppression operator from preg_match call.
+
 = 1.7.5 =
 First public version.
