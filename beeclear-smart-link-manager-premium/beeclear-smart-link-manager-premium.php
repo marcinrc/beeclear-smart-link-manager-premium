@@ -86,6 +86,15 @@ if ( !class_exists( 'BeeClear_ILM', false ) ) {
          */
         private $admin_css_printed = false;
 
+        /**
+         * Guards against double-initialization when both the free and premium plugins
+         * are active at the same time. Both share the class name BeeClear_ILM; whichever
+         * plugin file loads first wins the class definition. The second plugin's bootstrap
+         * then calls `new BeeClear_ILM()` again, which would duplicate every hook. This
+         * flag ensures the constructor body runs only once per request.
+         */
+        private static $initialized = false;
+
         private $autolink_timing_ms = 0.0;
 
         private $collect_external_matches = false;
@@ -158,6 +167,13 @@ if ( !class_exists( 'BeeClear_ILM', false ) ) {
         const VERSION = '1.7.5';
 
         public function __construct() {
+            // Prevent duplicate hook registration when the free plugin's bootstrap
+            // creates a second instance of this class (see bootstrap comment above).
+            if ( self::$initialized ) {
+                return;
+            }
+            self::$initialized = true;
+
             register_activation_hook( __FILE__, array($this, 'activate') );
             register_deactivation_hook( __FILE__, array($this, 'deactivate') );
             register_uninstall_hook( __FILE__, array('BeeClear_ILM', 'uninstall') );

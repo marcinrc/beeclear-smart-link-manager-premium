@@ -4319,5 +4319,16 @@ endif;
 
 if (class_exists('BeeClear_ILM')) {
     register_uninstall_hook(__FILE__, array('BeeClear_ILM', 'uninstall'));
-    new BeeClear_ILM();
+
+    // Do NOT instantiate when the premium plugin is active. WordPress loads
+    // beeclear-smart-link-manager-premium before this plugin (alphabetically
+    // '-p' sorts before '/'), so the premium class definition wins and premium
+    // already called `new BeeClear_ILM()`. Creating a second instance here
+    // would register every hook twice, producing duplicated admin panels.
+    if (!function_exists('is_plugin_active')) {
+        require_once ABSPATH . 'wp-admin/includes/plugin.php';
+    }
+    if (!is_plugin_active('beeclear-smart-link-manager-premium/beeclear-smart-link-manager-premium.php')) {
+        new BeeClear_ILM();
+    }
 }
