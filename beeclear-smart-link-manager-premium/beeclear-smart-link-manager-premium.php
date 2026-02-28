@@ -1122,7 +1122,7 @@ if ( !class_exists( 'BeeClear_ILM', false ) ) {
                 return false;
             }
             foreach ( (array) $patterns as $pat ) {
-                if ( @preg_match( $pat, $text ) !== 1 ) {
+                if ( preg_match( $pat, $text ) !== 1 ) {
                     return false;
                 }
             }
@@ -2536,7 +2536,7 @@ JS;
                     $dom = new DOMDocument();
                     $wrapped = '<div>' . $content . '</div>';
                     libxml_use_internal_errors( true );
-                    $loaded = @$dom->loadHTML( '<?xml encoding="UTF-8">' . $wrapped, $flags );
+                    $loaded = $dom->loadHTML( '<?xml encoding="UTF-8">' . $wrapped, $flags );
                     libxml_clear_errors();
                     if ( !$loaded ) {
                         return $content;
@@ -2618,7 +2618,7 @@ JS;
                                     $found = false;
                                     $matched_phrase = null;
                                     $context_element = $this->get_closest_element( $node );
-                                    $newTxt = @preg_replace_callback(
+                                    $newTxt = preg_replace_callback(
                                         $pattern,
                                         function ( $m ) use(
                                             $rule,
@@ -2678,7 +2678,7 @@ JS;
                                     );
                                     if ( $found && is_string( $newTxt ) ) {
                                         $frag = $dom->createDocumentFragment();
-                                        if ( @$frag->appendXML( $newTxt ) ) {
+                                        if ( $frag->appendXML( $newTxt ) ) {
                                             $node->parentNode->replaceChild( $frag, $node );
                                             if ( $matched_phrase !== null ) {
                                                 $this->store_link_context(
@@ -2690,6 +2690,7 @@ JS;
                                                 );
                                             }
                                         }
+                                        libxml_clear_errors();
                                         $linked_counts_internal[$target] = ( isset( $linked_counts_internal[$target] ) ? $linked_counts_internal[$target] + 1 : 1 );
                                         $total_count++;
                                         continue 2;
@@ -2796,7 +2797,7 @@ JS;
                                 $found = false;
                                 $matched_phrase = null;
                                 $context_element = $this->get_closest_element( $node );
-                                $newTxt = @preg_replace_callback(
+                                $newTxt = preg_replace_callback(
                                     $pattern,
                                     function ( $m ) use(
                                         $er,
@@ -2842,7 +2843,7 @@ JS;
                                 );
                                 if ( $found && is_string( $newTxt ) ) {
                                     $frag = $dom->createDocumentFragment();
-                                    if ( @$frag->appendXML( $newTxt ) ) {
+                                    if ( $frag->appendXML( $newTxt ) ) {
                                         $node->parentNode->replaceChild( $frag, $node );
                                         if ( $matched_phrase !== null ) {
                                             if ( !isset( $linked_phrases_external[$idx] ) ) {
@@ -2858,6 +2859,7 @@ JS;
                                             );
                                         }
                                     }
+                                    libxml_clear_errors();
                                     $linked_counts_external[$idx] = ( isset( $linked_counts_external[$idx] ) ? $linked_counts_external[$idx] + 1 : 1 );
                                     $total_count++;
                                     continue 2;
@@ -3270,7 +3272,10 @@ JS;
             $boundary = '[\\p{L}\\p{N}_]';
             if ( $is_regex ) {
                 $mod = ( $is_case ? 'u' : 'iu' );
-                if ( @preg_match( '/' . $phrase . '/' . $mod, '' ) === false ) {
+                set_error_handler( '__return_false', E_WARNING );
+                $pattern_valid = preg_match( '/' . $phrase . '/' . $mod, '' ) !== false;
+                restore_error_handler();
+                if ( ! $pattern_valid ) {
                     return null;
                 }
                 return '/' . $phrase . '/' . $mod;
@@ -3331,7 +3336,7 @@ JS;
                 if ( !$pattern ) {
                     return $content;
                 }
-                $res = @preg_replace_callback(
+                $res = preg_replace_callback(
                     $pattern,
                     function ( $m ) use($build_cb) {
                         return $build_cb( $m[0] );
