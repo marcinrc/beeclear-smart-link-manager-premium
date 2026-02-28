@@ -1906,15 +1906,15 @@ jQuery(function($){
             if (defined('REST_REQUEST') && REST_REQUEST)
                 return $data;
 
+            $nonce = isset($_POST[self::NONCE]) ? sanitize_text_field(wp_unslash($_POST[self::NONCE])) : '';
+            if ($nonce === '' || !wp_verify_nonce($nonce, self::NONCE))
+                return $data;
+
             $post_id = isset($postarr['ID']) ? (int) $postarr['ID'] : 0;
             if ($post_id && (wp_is_post_autosave($post_id) || wp_is_post_revision($post_id)))
                 return $data;
 
             if (empty($_POST['beeclear_ilm_rules_present']))
-                return $data;
-
-            $nonce = isset($_POST[self::NONCE]) ? sanitize_text_field(wp_unslash($_POST[self::NONCE])) : '';
-            if ($nonce === '' || !wp_verify_nonce($nonce, self::NONCE))
                 return $data;
 
             $settings = get_option(self::OPT_SETTINGS, array());
@@ -2244,7 +2244,7 @@ jQuery(function($){
                     }
                     $wrapped = '<div>' . $wrapped_content . '</div>';
                     libxml_use_internal_errors(true);
-                    $loaded = @$dom->loadHTML($wrapped, $flags);
+                    $loaded = $dom->loadHTML($wrapped, $flags);
                     libxml_clear_errors();
                     if (!$loaded)
                         return $content;
@@ -2348,7 +2348,7 @@ jQuery(function($){
                                 $found = false;
                                 $matched_phrase = null;
                                 $context_element = $this->get_closest_element($node);
-                                $newTxt = @preg_replace_callback($pattern, function ($m) use ($rule, $target, $settings, &$found, &$linked_phrases_internal, &$matched_phrase) {
+                                $newTxt = preg_replace_callback($pattern, function ($m) use ($rule, $target, $settings, &$found, &$linked_phrases_internal, &$matched_phrase) {
                                     $found = true;
                                     $text = $m[0];
                                     $url = $rule['url'];
@@ -2384,12 +2384,13 @@ jQuery(function($){
 
                                 if ($found && is_string($newTxt)) {
                                     $frag = $dom->createDocumentFragment();
-                                    if (@$frag->appendXML($newTxt)) {
+                                    if ($frag->appendXML($newTxt)) {
                                         $node->parentNode->replaceChild($frag, $node);
                                         if ($matched_phrase !== null) {
                                             $this->store_link_context($linked_contexts_internal, $target, $matched_phrase, $context_element ?: $node, false);
                                         }
                                     }
+                                    libxml_clear_errors();
                                     $linked_counts_internal[$target] = isset($linked_counts_internal[$target]) ? $linked_counts_internal[$target] + 1 : 1;
                                     $total_count++;
                                     if ($target_limit > 0 && $linked_counts_internal[$target] >= $target_limit)
@@ -2483,7 +2484,7 @@ jQuery(function($){
                                 $found = false;
                                 $matched_phrase = null;
                                 $context_element = $this->get_closest_element($node);
-                                $newTxt = @preg_replace_callback($pattern, function ($m) use ($er, $settings, &$found, &$matched_phrase) {
+                                $newTxt = preg_replace_callback($pattern, function ($m) use ($er, $settings, &$found, &$matched_phrase) {
                                     $found = true;
                                     $text = $m[0];
                                     $url = $er['url'];
@@ -2506,7 +2507,7 @@ jQuery(function($){
 
                                 if ($found && is_string($newTxt)) {
                                     $frag = $dom->createDocumentFragment();
-                                    if (@$frag->appendXML($newTxt)) {
+                                    if ($frag->appendXML($newTxt)) {
                                         $node->parentNode->replaceChild($frag, $node);
                                         if ($matched_phrase !== null) {
                                             if (!isset($linked_phrases_external[$idx]))
@@ -2515,6 +2516,7 @@ jQuery(function($){
                                             $this->store_link_context($linked_contexts_external, $idx, $matched_phrase, $context_element ?: $node, false);
                                         }
                                     }
+                                    libxml_clear_errors();
                                     $linked_counts_external[$idx] = isset($linked_counts_external[$idx]) ? $linked_counts_external[$idx] + 1 : 1;
                                     $total_count++;
                                     continue 2;
@@ -2859,7 +2861,10 @@ jQuery(function($){
             $boundary = '[\p{L}\p{N}_]';
             if ($is_regex) {
                 $mod = $is_case ? 'u' : 'iu';
-                if (@preg_match('/' . $phrase . '/' . $mod, '') === false)
+                set_error_handler( '__return_false', E_WARNING );
+                $pattern_valid = preg_match( '/' . $phrase . '/' . $mod, '' ) !== false;
+                restore_error_handler();
+                if ( ! $pattern_valid )
                     return null;
                 return '/' . $phrase . '/' . $mod;
             } else {
@@ -2908,7 +2913,7 @@ jQuery(function($){
             $apply_once = function ($content, $pattern, $build_cb) {
                 if (!$pattern)
                     return $content;
-                $res = @preg_replace_callback($pattern, function ($m) use ($build_cb) {
+                $res = preg_replace_callback($pattern, function ($m) use ($build_cb) {
                     return $build_cb($m[0]);
                 }, $content, 1);
                 return is_string($res) ? $res : $content;
