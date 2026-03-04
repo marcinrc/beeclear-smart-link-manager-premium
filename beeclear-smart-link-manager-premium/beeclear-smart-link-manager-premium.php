@@ -3272,9 +3272,11 @@ JS;
             $boundary = '[\\p{L}\\p{N}_]';
             if ( $is_regex ) {
                 $mod = ( $is_case ? 'u' : 'iu' );
-                set_error_handler( '__return_false', E_WARNING );
-                $pattern_valid = preg_match( '/' . $phrase . '/' . $mod, '' ) !== false;
-                restore_error_handler();
+                try {
+                    $pattern_valid = preg_match( '/' . $phrase . '/' . $mod, '' ) !== false;
+                } catch ( \Throwable $e ) {
+                    $pattern_valid = false;
+                }
                 if ( ! $pattern_valid ) {
                     return null;
                 }
