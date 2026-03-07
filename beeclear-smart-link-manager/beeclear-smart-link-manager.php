@@ -406,6 +406,20 @@ if (!class_exists('BeeClear_ILM', false)):
         $tpl_clean = $default_tpl;
     }
 
+    $test_html = strtr($tpl_clean, array(
+        '{url}'   => 'https://example.com/',
+        '{text}'  => 'test',
+        '{rel}'   => ' rel="nofollow"',
+        '{title}' => ' title="test"',
+        '{aria}'  => ' aria-label="test"',
+        '{class}' => ' class="test"',
+    ));
+    $test_dom = new \DOMDocument();
+    $test_frag = $test_dom->createDocumentFragment();
+    if (! @$test_frag->appendXML($test_html)) {
+        $tpl_clean = $default_tpl;
+    }
+
     $out['link_template'] = $tpl_clean;
 
     // Booleans
@@ -2384,7 +2398,33 @@ jQuery(function($){
 
                                 if ($found && is_string($newTxt)) {
                                     $frag = $dom->createDocumentFragment();
-                                    if ($frag->appendXML($newTxt)) {
+                                    $appended = @$frag->appendXML($newTxt);
+                                    if (! $appended) {
+                                        libxml_clear_errors();
+                                        $fallback_tpl = '<a href="{url}"{rel}{title}{aria}{class}>{text}</a>';
+                                        $newTxt = preg_replace_callback(
+                                            $pattern,
+                                            function ($fm) use ($rule, $settings, $fallback_tpl) {
+                                                $rel = trim((string) ($settings['rel'] ?? ''));
+                                                $class = trim((string) ($settings['default_class'] ?? 'beeclear-ilm-link'));
+                                                return strtr($fallback_tpl, array(
+                                                    '{url}'   => esc_url($rule['url']),
+                                                    '{text}'  => esc_html($fm[0]),
+                                                    '{rel}'   => $rel !== '' ? ' rel="' . esc_attr($rel) . '"' : '',
+                                                    '{title}' => '',
+                                                    '{aria}'  => '',
+                                                    '{class}' => $class !== '' ? ' class="' . esc_attr($class) . '"' : '',
+                                                ));
+                                            },
+                                            $txt,
+                                            1
+                                        );
+                                        if (is_string($newTxt)) {
+                                            $frag = $dom->createDocumentFragment();
+                                            $appended = @$frag->appendXML($newTxt);
+                                        }
+                                    }
+                                    if ($appended) {
                                         $node->parentNode->replaceChild($frag, $node);
                                         if ($matched_phrase !== null) {
                                             $this->store_link_context($linked_contexts_internal, $target, $matched_phrase, $context_element ?: $node, false);
@@ -2507,7 +2547,33 @@ jQuery(function($){
 
                                 if ($found && is_string($newTxt)) {
                                     $frag = $dom->createDocumentFragment();
-                                    if ($frag->appendXML($newTxt)) {
+                                    $appended = @$frag->appendXML($newTxt);
+                                    if (! $appended) {
+                                        libxml_clear_errors();
+                                        $fallback_tpl = '<a href="{url}"{rel}{title}{aria}{class}>{text}</a>';
+                                        $newTxt = preg_replace_callback(
+                                            $pattern,
+                                            function ($fm) use ($er, $settings, $fallback_tpl) {
+                                                $rel = trim((string) ($er['rel'] ?? ''));
+                                                $class = trim((string) ($er['class'] !== '' ? $er['class'] : ($settings['default_class'] ?? 'beeclear-ilm-link')));
+                                                return strtr($fallback_tpl, array(
+                                                    '{url}'   => esc_url($er['url']),
+                                                    '{text}'  => esc_html($fm[0]),
+                                                    '{rel}'   => $rel !== '' ? ' rel="' . esc_attr($rel) . '"' : '',
+                                                    '{title}' => '',
+                                                    '{aria}'  => '',
+                                                    '{class}' => $class !== '' ? ' class="' . esc_attr($class) . '"' : '',
+                                                ));
+                                            },
+                                            $txt,
+                                            1
+                                        );
+                                        if (is_string($newTxt)) {
+                                            $frag = $dom->createDocumentFragment();
+                                            $appended = @$frag->appendXML($newTxt);
+                                        }
+                                    }
+                                    if ($appended) {
                                         $node->parentNode->replaceChild($frag, $node);
                                         if ($matched_phrase !== null) {
                                             if (!isset($linked_phrases_external[$idx]))
@@ -3063,6 +3129,12 @@ jQuery(function($){
                     $this->log_activity(__('Database purged and index rebuilt from dashboard.', 'beeclear-smart-link-manager'));
                 }
             }
+            if (isset($_POST['beeclear_ilm_reset_link_template']) && check_admin_referer(self::NONCE, self::NONCE)) {
+                $default_tpl = '<a href="{url}"{rel}{title}{aria}{class}>{text}</a>';
+                $settings['link_template'] = $default_tpl;
+                update_option(self::OPT_SETTINGS, $settings, false);
+                echo '<div class="notice notice-success"><p>' . esc_html__('Link template restored to default.', 'beeclear-smart-link-manager') . '</p></div>';
+            }
 
             $s = wp_parse_args($settings, array(
                 'rel' => 'nofollow',
@@ -3131,7 +3203,8 @@ jQuery(function($){
             echo '</td></tr>';
 
             echo '<tr><th>' . esc_html__('Default CSS class', 'beeclear-smart-link-manager') . '</th><td><input type="text" name="' . esc_attr(self::OPT_SETTINGS) . '[default_class]" value="' . esc_attr($s['default_class']) . '" class="regular-text"></td></tr>';
-            echo '<tr><th>' . esc_html__('Link template', 'beeclear-smart-link-manager') . '</th><td><textarea name="' . esc_attr(self::OPT_SETTINGS) . '[link_template]" rows="3" class="large-text code">' . esc_textarea($s['link_template']) . '</textarea><span class="inline-help">' . esc_html__('Placeholders: {url} {text} {rel} {title} {aria} {class}. Empty attributes are omitted.', 'beeclear-smart-link-manager') . '</span></td></tr>';
+            $default_link_tpl = '<a href="{url}"{rel}{title}{aria}{class}>{text}</a>';
+            echo '<tr><th>' . esc_html__('Link template', 'beeclear-smart-link-manager') . '</th><td><textarea id="beeclear-link-template" name="' . esc_attr(self::OPT_SETTINGS) . '[link_template]" rows="3" class="large-text code">' . esc_textarea($s['link_template']) . '</textarea><span class="inline-help">' . esc_html__('Placeholders: {url} {text} {rel} {title} {aria} {class}. Empty attributes are omitted.', 'beeclear-smart-link-manager') . '</span><br><button type="button" class="button button-small" onclick="document.getElementById(\'beeclear-link-template\').value=' . esc_attr(wp_json_encode($default_link_tpl)) . ';">' . esc_html__('Restore default template', 'beeclear-smart-link-manager') . '</button></td></tr>';
             echo '<tr><th>' . esc_html__('Cross-inline (formatting tags)', 'beeclear-smart-link-manager') . '</th><td><label><input type="checkbox" name="' . esc_attr(self::OPT_SETTINGS) . '[cross_inline]" value="1" ' . checked(!empty($s['cross_inline']), true, false) . '> ' . esc_html__('Allow matching across u, i/em, b/strong, mark (literal phrases only).', 'beeclear-smart-link-manager') . '</label><span class="inline-help">' . esc_html__('Lets a phrase span across simple formatting tags. Example: "<strong>Word</strong>Press".', 'beeclear-smart-link-manager') . '</span></td></tr>';
             echo '</table>';
             echo '</div>';
@@ -3233,6 +3306,12 @@ jQuery(function($){
             echo esc_html__('Confirm full cleanup: remove internal rules (per post), external rules, link counters & index.', 'beeclear-smart-link-manager');
             echo '</label>';
             echo '<button class="button button-secondary" name="beeclear_ilm_purge_db" value="1">' . esc_html__('Purge database (ILM) & rebuild index', 'beeclear-smart-link-manager') . '</button>';
+            echo '</form>';
+
+            echo '<form method="post" class="beeclear-inline-form">';
+            wp_nonce_field(self::NONCE, self::NONCE);
+            echo '<p class="description">' . esc_html__('If links stopped appearing after changing the link template, restore the default template.', 'beeclear-smart-link-manager') . '</p>';
+            echo '<button class="button button-secondary" name="beeclear_ilm_reset_link_template" value="1">' . esc_html__('Restore default link template', 'beeclear-smart-link-manager') . '</button>';
             echo '</form>';
 
             echo '</div>';
