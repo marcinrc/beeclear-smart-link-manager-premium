@@ -533,6 +533,15 @@ if ( !class_exists( 'BeeClear_ILM', false ) ) {
             if ( strpos( $tpl, '{url}' ) === false || strpos( $tpl, '{text}' ) === false ) {
                 $tpl = $default_tpl;
             }
+            // Substitute placeholders with real attributes before wp_kses,
+            // so they are not stripped as invalid attribute names.
+            $ph_map = array(
+                '{rel}'   => ' rel="__BEECLEAR_REL__"',
+                '{title}' => ' title="__BEECLEAR_TITLE__"',
+                '{aria}'  => ' aria-label="__BEECLEAR_ARIA__"',
+                '{class}' => ' class="__BEECLEAR_CLASS__"',
+            );
+            $tpl_for_kses = strtr( $tpl, $ph_map );
             $allowed = array(
                 'a' => array(
                     'href'       => true,
@@ -543,7 +552,9 @@ if ( !class_exists( 'BeeClear_ILM', false ) ) {
                     'target'     => true,
                 ),
             );
-            $tpl_clean = wp_kses( $tpl, $allowed );
+            $tpl_clean = wp_kses( $tpl_for_kses, $allowed );
+            // Restore placeholders from markers.
+            $tpl_clean = strtr( $tpl_clean, array_flip( $ph_map ) );
             if ( $tpl_clean === '' ) {
                 $tpl_clean = $default_tpl;
             }
