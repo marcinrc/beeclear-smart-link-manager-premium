@@ -3141,11 +3141,33 @@ jQuery(function($){
                     $this->log_activity(__('Database purged and index rebuilt from dashboard.', 'beeclear-smart-link-manager'));
                 }
             }
-            if (isset($_POST['beeclear_ilm_reset_link_template']) && check_admin_referer(self::NONCE, self::NONCE)) {
-                $default_tpl = '<a href="{url}"{rel}{title}{aria}{class}>{text}</a>';
-                $settings['link_template'] = $default_tpl;
-                update_option(self::OPT_SETTINGS, $settings, false);
-                echo '<div class="notice notice-success"><p>' . esc_html__('Link template restored to default.', 'beeclear-smart-link-manager') . '</p></div>';
+            if (isset($_POST['beeclear_ilm_reset_global_settings']) && check_admin_referer(self::NONCE, self::NONCE)) {
+                $defaults = array(
+                    'rel'                    => 'nofollow',
+                    'title_mode'             => 'phrase',
+                    'title_custom'           => '',
+                    'aria_mode'              => 'phrase',
+                    'aria_custom'            => '',
+                    'default_class'          => 'beeclear-ilm-link',
+                    'max_per_target'         => 1,
+                    'max_total_per_page'     => 0,
+                    'process_post_types'     => array('post', 'page'),
+                    'min_content_length'     => 200,
+                    'min_element_length'     => 20,
+                    'link_template'          => '<a href="{url}"{rel}{title}{aria}{class}>{text}</a>',
+                    'clean_on_uninstall'     => false,
+                    'clean_on_deactivation'  => false,
+                    'process_on_archives'    => false,
+                    'skip_elements_internal' => '',
+                    'cross_inline'           => false,
+                    'log_internal_timing'    => false,
+                    'auto_scan_on_save'      => false,
+                    'auto_scan_on_external'  => false,
+                    'activity_log_limit'     => '',
+                );
+                update_option(self::OPT_SETTINGS, $defaults, false);
+                $settings = $defaults;
+                echo '<div class="notice notice-success"><p>' . esc_html__('Global settings restored to defaults.', 'beeclear-smart-link-manager') . '</p></div>';
             }
 
             $s = wp_parse_args($settings, array(
@@ -3322,8 +3344,8 @@ jQuery(function($){
 
             echo '<form method="post" class="beeclear-inline-form">';
             wp_nonce_field(self::NONCE, self::NONCE);
-            echo '<p class="description">' . esc_html__('If links stopped appearing after changing the link template, restore the default template.', 'beeclear-smart-link-manager') . '</p>';
-            echo '<button class="button button-secondary" name="beeclear_ilm_reset_link_template" value="1">' . esc_html__('Restore default link template', 'beeclear-smart-link-manager') . '</button>';
+            echo '<label><input type="checkbox" name="confirm" required> ' . esc_html__('Confirm resetting all global settings to their default values.', 'beeclear-smart-link-manager') . '</label>';
+            echo '<button class="button button-secondary" name="beeclear_ilm_reset_global_settings" value="1">' . esc_html__('Reset global settings to defaults', 'beeclear-smart-link-manager') . '</button>';
             echo '</form>';
 
             echo '</div>';
