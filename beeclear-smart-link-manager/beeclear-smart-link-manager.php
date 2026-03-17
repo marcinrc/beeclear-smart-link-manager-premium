@@ -2,7 +2,7 @@
 /**
  * Plugin Name: BeeClear Smart Link Manager
  * Plugin URI: https://beeclear.pl/en/internal-external-link-manager/
- * Description: Smart auto-linking for SEO: link keywords to posts or external URLs with full rule control and instant rebuild.
+ * Description: Smart auto-linking for SEO/GEO: link keywords to posts or external URLs with full rule control and instant rebuild.
  * Version: 1.8
  * Author: BeeClear
  * Author URI: https://beeclear.pl/en/
