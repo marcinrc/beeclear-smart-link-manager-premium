@@ -1,10 +1,21 @@
-name: Deploy to FTP (BC)
-
+name: Deploy to FTP
 on:
   push:
     branches:
       - main
       - bc
+
+# ─────────────────────────────────────────────────────────
+#  KONFIGURACJA KONT I ŚCIEŻEK
+# ─────────────────────────────────────────────────────────
+#  Edytuj TYLKO sekcję "accounts" w jobie build-matrix.
+#  Dane FTP definiujesz raz na konto, ścieżki jako listę.
+#
+#  Sekrety do ustawienia w GitHub:
+#    Konto 1: FTP_HOST, FTP_USERNAME, FTP_PASSWORD
+#    Konto 2: FTP2_HOST, FTP2_USERNAME, FTP2_PASSWORD
+#    Konto 3: FTP3_HOST, FTP3_USERNAME, FTP3_PASSWORD
+# ─────────────────────────────────────────────────────────
 
 jobs:
   detect-changes:
@@ -18,7 +29,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 2
-
       - name: Detect changes
         id: changes
         run: |
@@ -27,31 +37,89 @@ jobs:
           echo "free=$( [ "$FREE" -gt 0 ] && echo 'true' || echo 'false' )" >> $GITHUB_OUTPUT
           echo "premium=$( [ "$PREMIUM" -gt 0 ] && echo 'true' || echo 'false' )" >> $GITHUB_OUTPUT
 
+  build-matrix:
+    name: Build deploy matrix
+    runs-on: ubuntu-latest
+    outputs:
+      targets: ${{ steps.matrix.outputs.targets }}
+    steps:
+      - name: Generate matrix from accounts × paths
+        id: matrix
+        run: |
+          # ════════════════════════════════════════════
+          #  EDYTUJ TUTAJ — konta i ich ścieżki
+          # ════════════════════════════════════════════
+          accounts='[
+            {
+              "label": "BeeClear",
+              "host": "FTP_HOST",
+              "user": "FTP_USERNAME",
+              "pass": "FTP_PASSWORD",
+              "dirs": [
+                "/public_html/wp-content/plugins/",
+                "/public_html/demo/wp-content/plugins/",
+                "/public_html/en/wp-content/plugins/"
+              ]
+            },
+            {
+              "label": "ASARI",
+              "host": "FTP_HOST_ASARI",
+              "user": "FTP_USERNAME_ASARI",
+              "pass": "FTP_PASSWORD_ASARI",
+              "dirs": [
+                "/wp-content/plugins/",
+                "/en/wp-content/plugins/"
+              ]
+            },
+            {
+              "label": "AIPR",
+              "host": "FTP_HOST_AIPR",
+              "user": "FTP_USERNAME_AIPR",
+              "pass": "FTP_PASSWORD_AIPR",
+              "dirs": [
+                "/pl/wp-content/plugins/",
+                "/en/wp-content/plugins/"
+              ]
+            }
+          ]'
+
+          # Rozwinięcie konto × ścieżka do płaskiej listy
+          targets=$(echo "$accounts" | jq -c '
+            [ .[] | . as $acct |
+              .dirs[] | {
+                label: ($acct.label + " / " + (split("/") | map(select(. != "")) | .[-2] // "root")),
+                host: $acct.host,
+                user: $acct.user,
+                pass: $acct.pass,
+                dir: .
+              }
+            ]
+          ')
+
+          echo "targets=$targets" >> $GITHUB_OUTPUT
+
   deploy-free:
-    name: Deploy FREE plugin
-    needs: detect-changes
+    name: "FREE → ${{ matrix.target.label }}"
+    needs: [detect-changes, build-matrix]
     if: needs.detect-changes.outputs.free_changed == 'true'
     runs-on: ubuntu-latest
     strategy:
       max-parallel: 1
+      fail-fast: false
       matrix:
-        server_dir:
-          - /public_html/wp-content/plugins/
-          - /public_html/demo/wp-content/plugins/
-          - /public_html/en/wp-content/plugins/
+        target: ${{ fromJson(needs.build-matrix.outputs.targets) }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
-      - name: Upload FREE to FTP (${{ matrix.server_dir }})
+      - name: Upload FREE plugin
         uses: SamKirkland/FTP-Deploy-Action@v4.3.4
         with:
-          server: ${{ secrets.FTP_HOST }}
-          username: ${{ secrets.FTP_USERNAME }}
-          password: ${{ secrets.FTP_PASSWORD }}
+          server: ${{ secrets[matrix.target.host] }}
+          username: ${{ secrets[matrix.target.user] }}
+          password: ${{ secrets[matrix.target.pass] }}
           protocol: ftp
           local-dir: ./beeclear-smart-link-manager/
-          server-dir: ${{ matrix.server_dir }}beeclear-smart-link-manager/
+          server-dir: ${{ matrix.target.dir }}beeclear-smart-link-manager/
           exclude: |
             **/.git*
             **/.git*/**
@@ -64,30 +132,27 @@ jobs:
             **/.ftp-deploy-sync-state.json
 
   deploy-premium:
-    name: Deploy PREMIUM plugin
-    needs: detect-changes
+    name: "PREMIUM → ${{ matrix.target.label }}"
+    needs: [detect-changes, build-matrix]
     if: needs.detect-changes.outputs.premium_changed == 'true'
     runs-on: ubuntu-latest
     strategy:
       max-parallel: 1
+      fail-fast: false
       matrix:
-        server_dir:
-          - /public_html/wp-content/plugins/
-          - /public_html/demo/wp-content/plugins/
-          - /public_html/en/wp-content/plugins/
+        target: ${{ fromJson(needs.build-matrix.outputs.targets) }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
-      - name: Upload PREMIUM to FTP (${{ matrix.server_dir }})
+      - name: Upload PREMIUM plugin
         uses: SamKirkland/FTP-Deploy-Action@v4.3.4
         with:
-          server: ${{ secrets.FTP_HOST }}
-          username: ${{ secrets.FTP_USERNAME }}
-          password: ${{ secrets.FTP_PASSWORD }}
+          server: ${{ secrets[matrix.target.host] }}
+          username: ${{ secrets[matrix.target.user] }}
+          password: ${{ secrets[matrix.target.pass] }}
           protocol: ftp
           local-dir: ./beeclear-smart-link-manager-premium/
-          server-dir: ${{ matrix.server_dir }}beeclear-smart-link-manager-premium/
+          server-dir: ${{ matrix.target.dir }}beeclear-smart-link-manager-premium/
           exclude: |
             **/.git*
             **/.git*/**
