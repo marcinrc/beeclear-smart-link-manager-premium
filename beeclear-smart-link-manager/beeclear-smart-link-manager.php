@@ -2100,17 +2100,25 @@ jQuery(function($){
                 $this->log_activity(sprintf($log_message, count($ids)));
             }
 
-            // Schedule asynchronous scan via WP-Cron to avoid blocking the
-            // current HTTP request (long-running synchronous loops trigger
-            // WAF timeout / DoS rules and cause IP bans).
-            if (!wp_next_scheduled('beeclear_ilm_async_scan')) {
-                wp_schedule_single_event(time(), 'beeclear_ilm_async_scan');
-                if (function_exists('spawn_cron')) {
-                    spawn_cron();
-                }
-            }
+            $this->schedule_async_scan();
 
             return true;
+        }
+
+        /**
+         * (Re)schedule the async scan cron event, clearing any previously
+         * scheduled one first so a new/restarted scan fires immediately.
+         */
+        private function schedule_async_scan()
+        {
+            $ts = wp_next_scheduled('beeclear_ilm_async_scan');
+            if ($ts) {
+                wp_unschedule_event($ts, 'beeclear_ilm_async_scan');
+            }
+            wp_schedule_single_event(time(), 'beeclear_ilm_async_scan');
+            if (function_exists('spawn_cron')) {
+                spawn_cron();
+            }
         }
 
         /**
@@ -2135,11 +2143,9 @@ jQuery(function($){
             }
 
             // Not finished yet – reschedule after 1 second to match configured speed.
-            if (!wp_next_scheduled('beeclear_ilm_async_scan')) {
-                wp_schedule_single_event(time() + 1, 'beeclear_ilm_async_scan');
-                if (function_exists('spawn_cron')) {
-                    spawn_cron();
-                }
+            wp_schedule_single_event(time() + 1, 'beeclear_ilm_async_scan');
+            if (function_exists('spawn_cron')) {
+                spawn_cron();
             }
         }
 
@@ -4258,13 +4264,7 @@ jQuery(function($){
             /* translators: %d: number of pages queued for the overview scan. */
             $this->log_activity(sprintf(__('Scan started: %d pages queued.', 'beeclear-smart-link-manager'), count($ids)));
 
-            // Schedule background processing via WP-Cron.
-            if (!wp_next_scheduled('beeclear_ilm_async_scan')) {
-                wp_schedule_single_event(time(), 'beeclear_ilm_async_scan');
-                if (function_exists('spawn_cron')) {
-                    spawn_cron();
-                }
-            }
+            $this->schedule_async_scan();
 
             wp_send_json_success(array('total' => count($ids)));
         }
