@@ -226,8 +226,11 @@ if ( !class_exists( 'BeeClear_ILM', false ) ) {
             add_action( 'wp_ajax_beeclear_ilm_expand_sources', array($this, 'ajax_expand_sources') );
             add_action( 'wp_ajax_beeclear_ilm_expand_sources_paginated', array($this, 'ajax_expand_sources_paginated') );
             add_action( 'wp_ajax_beeclear_ilm_start_overview_scan', array($this, 'ajax_start_overview_scan') );
-            add_action( 'wp_ajax_beeclear_ilm_step_overview_scan', array($this, 'ajax_step_overview_scan') );
+            add_action( 'wp_ajax_beeclear_ilm_step_overview_scan', array($this, 'ajax_scan_status') );
+            add_action( 'wp_ajax_beeclear_ilm_scan_status', array($this, 'ajax_scan_status') );
             add_action( 'wp_ajax_beeclear_ilm_fetch_logs', array($this, 'ajax_fetch_logs') );
+
+            add_action( 'admin_bar_menu', array($this, 'admin_bar_scan_progress'), 999 );
             add_action( 'wp_enqueue_scripts', array($this, 'frontend_assets') );
             add_action( 'wp_footer', array($this, 'render_timing_log_script') );
             add_action( 'admin_init', array($this, 'register_admin_columns') );
@@ -1244,9 +1247,7 @@ if ( !class_exists( 'BeeClear_ILM', false ) ) {
                 'scan_empty'          => __( 'Nothing to scan.', 'beeclear-smart-link-manager-premium' ),
                 'scan_running'        => __( 'Overview scan in progress…', 'beeclear-smart-link-manager-premium' ),
             );
-            $s_opts = get_option( self::OPT_SETTINGS, array() );
-            $scan_speed = isset( $s_opts['scan_pages_per_second'] ) ? max( 1, min( 20, intval( $s_opts['scan_pages_per_second'] ) ) ) : 1;
-            wp_add_inline_script( 'jquery', 'window.BeeClearILM = window.BeeClearILM || {}; BeeClearILM.i18n = ' . wp_json_encode( $L ) . '; BeeClearILM.nonce = "' . wp_create_nonce( self::NONCE ) . '"; BeeClearILM.settingsUrl = "' . esc_url( admin_url( 'admin.php?page=beeclear-ilm' ) ) . '"; BeeClearILM.scanSpeed = ' . wp_json_encode( $scan_speed ) . ';', 'before' );
+            wp_add_inline_script( 'jquery', 'window.BeeClearILM = window.BeeClearILM || {}; BeeClearILM.i18n = ' . wp_json_encode( $L ) . '; BeeClearILM.nonce = "' . wp_create_nonce( self::NONCE ) . '"; BeeClearILM.settingsUrl = "' . esc_url( admin_url( 'admin.php?page=beeclear-ilm' ) ) . '";', 'before' );
             $js = <<<'JS'
 jQuery(function($){
     var L = (window.BeeClearILM && BeeClearILM.i18n) ? BeeClearILM.i18n : {};
@@ -1378,6 +1379,10 @@ jQuery(function($){
     $('.ext-regex').trigger('change');
     $('.ext-context-regex').trigger('change');
 
+    /* ── Global background-scan polling (runs on EVERY admin page) ── */
+    var scanNonce = (window.BeeClearILM && BeeClearILM.nonce) ? BeeClearILM.nonce : '',
+        settingsUrl = (window.BeeClearILM && BeeClearILM.settingsUrl) ? BeeClearILM.settingsUrl : '';
+
     var scanMessages = {
         failed: L.scan_failed || 'Scan failed.',
         done: L.scan_done || 'Scan finished. Overview updated.',
@@ -1385,137 +1390,124 @@ jQuery(function($){
         unable: L.scan_unable || 'Unable to start scan.',
         empty: L.scan_empty || 'Nothing to scan.'
     };
-    var scanNonce = (window.BeeClearILM && BeeClearILM.nonce) ? BeeClearILM.nonce : '',
-        settingsUrl = (window.BeeClearILM && BeeClearILM.settingsUrl) ? BeeClearILM.settingsUrl : '',
-        scanSpeed = (window.BeeClearILM && BeeClearILM.scanSpeed) ? parseInt(BeeClearILM.scanSpeed, 10) : 1;
 
+    function updateAdminBarScan(percent){
+        var $item = $('#wp-admin-bar-beeclear-ilm-scan');
+        if(!$item.length){
+            var $menu = $('#wp-admin-bar-root-default');
+            if(!$menu.length) return;
+            $item = $('<li>', {id: 'wp-admin-bar-beeclear-ilm-scan'}).append(
+                $('<a>', {class: 'ab-item', href: settingsUrl || '#'}).html(
+                    '<span class="beeclear-adminbar-scan-label"></span>' +
+                    '<span class="beeclear-adminbar-scan-track" style="display:inline-block;width:60px;height:10px;background:#455a64;border-radius:3px;margin-left:6px;vertical-align:middle;overflow:hidden;">' +
+                    '<span class="beeclear-adminbar-scan-bar" style="display:block;height:100%;width:0%;background:#76c442;border-radius:3px;transition:width .3s;"></span>' +
+                    '</span>'
+                )
+            );
+            $menu.append($item);
+        }
+        var label = (L.scan_running || 'Scan') + ' ' + percent + '%';
+        $item.find('.beeclear-adminbar-scan-label').text(label);
+        $item.find('.beeclear-adminbar-scan-bar').css('width', percent + '%');
+    }
+
+    function removeAdminBarScan(){
+        $('#wp-admin-bar-beeclear-ilm-scan').remove();
+    }
+
+    /* Polling – runs globally, checks every 3 s while scan is active */
+    var scanPollTimer = null,
+        scanPolling = false;
+
+    function pollScanStatus(){
+        if(scanPolling) return;
+        scanPolling = true;
+        $.post(ajaxurl,{action:'beeclear_ilm_scan_status', _ajax_nonce: scanNonce}, function(resp){
+            scanPolling = false;
+            if(!resp || !resp.success || !resp.data){ stopScanPoll(); return; }
+            var d = resp.data;
+            if(d.done){
+                removeAdminBarScan();
+                stopScanPoll();
+                /* update settings-page UI if visible */
+                var $scanSummary = $('#beeclear-ilm-scan-summary');
+                var $scanLabel = $('#beeclear-ilm-progress .beeclear-progress__label');
+                var $scanBar = $('#beeclear-ilm-progress .beeclear-progress__bar');
+                var $scanBtn = $('#beeclear-ilm-start-overview-scan');
+                if($scanBar.length) $scanBar.css('width', '100%');
+                if($scanLabel.length) $scanLabel.text(scanMessages.done);
+                if($scanBtn.length) $scanBtn.prop('disabled', false);
+                if(d.summary_html && $scanSummary.length) $scanSummary.html(d.summary_html);
+                return;
+            }
+            var pct = d.total ? Math.round((d.processed / d.total) * 100) : 0;
+            pct = Math.max(0, Math.min(100, pct));
+            updateAdminBarScan(pct);
+            /* also update settings-page progress bar if visible */
+            var $pgBar = $('#beeclear-ilm-progress .beeclear-progress__bar');
+            var $pgLabel = $('#beeclear-ilm-progress .beeclear-progress__label');
+            var $pgWrap = $('#beeclear-ilm-progress');
+            if($pgBar.length){
+                $pgWrap.removeAttr('hidden').css('display', 'block');
+                $pgBar.css('width', pct + '%');
+                $pgLabel.text(pct + '% — ' + d.processed + '/' + d.total);
+            }
+        }).fail(function(){ scanPolling = false; });
+    }
+
+    function startScanPoll(){
+        if(scanPollTimer) return;
+        pollScanStatus();
+        scanPollTimer = setInterval(pollScanStatus, 3000);
+    }
+
+    function stopScanPoll(){
+        if(scanPollTimer){ clearInterval(scanPollTimer); scanPollTimer = null; }
+    }
+
+    /* Auto-start polling if admin bar already shows scan in progress (server-rendered) */
+    if($('#wp-admin-bar-beeclear-ilm-scan').length){
+        startScanPoll();
+    }
+
+    /* ── Settings page: scan button (starts background scan) ── */
     var $scanBtn = $('#beeclear-ilm-start-overview-scan'),
         $scanProgress = $('#beeclear-ilm-progress'),
         $scanBar = $('#beeclear-ilm-progress .beeclear-progress__bar'),
-        $scanLabel = $('#beeclear-ilm-progress .beeclear-progress__label'),
-        $scanSummary = $('#beeclear-ilm-scan-summary');
+        $scanLabel = $('#beeclear-ilm-progress .beeclear-progress__label');
 
     if($scanBtn.length){
-        var scanRunning = false,
-            scanTotal = 0,
-            idleText = $scanLabel.text();
-
-        setProgressVisibility(false);
-
-        function setProgressVisibility(isVisible){
-            if(isVisible){
-                $scanProgress.removeAttr('hidden').css('display', 'block');
-            } else {
-                $scanProgress.attr('hidden', 'hidden').css('display', 'none');
-            }
-        }
-
-        function toggleAdminbarScan(running, percent){
-            var $menu = $('#wp-admin-bar-root-default');
-            if(!$menu.length) return;
-            var $item = $('#wp-admin-bar-beeclear-ilm-scan');
-            if(running){
-                var pct = typeof percent === 'number' ? percent : 0;
-                var label = (L.scan_running || 'Scan') + ' ' + pct + '%';
-                if(!$item.length){
-                    $item = $('<li>', {id: 'wp-admin-bar-beeclear-ilm-scan'}).append(
-                        $('<a>', {class: 'ab-item', href: settingsUrl || '#'}).html(
-                            '<span class="beeclear-adminbar-scan-label">' + label + '</span>' +
-                            '<span class="beeclear-adminbar-scan-track" style="display:inline-block;width:60px;height:10px;background:#455a64;border-radius:3px;margin-left:6px;vertical-align:middle;overflow:hidden;">' +
-                            '<span class="beeclear-adminbar-scan-bar" style="display:block;height:100%;width:' + pct + '%;background:#76c442;border-radius:3px;transition:width .3s;"></span>' +
-                            '</span>'
-                        )
-                    );
-                    $menu.append($item);
-                } else {
-                    $item.find('.beeclear-adminbar-scan-label').text(label);
-                    $item.find('.beeclear-adminbar-scan-bar').css('width', pct + '%');
-                }
-            } else {
-                $item.remove();
-            }
-        }
-
-        function resetProgress(){
-            $scanBar.css('width', '0%');
-            $scanLabel.text(idleText);
-        }
-
-        function finalizeScan(msg){
-            scanRunning = false;
-            $scanBtn.prop('disabled', false);
-            if(msg){
-                $scanLabel.text(msg);
-            }
-            toggleAdminbarScan(false);
-            setProgressVisibility(true);
-        }
-
-        function updateScanStatus(processed){
-            var percent = scanTotal ? Math.round((processed / scanTotal) * 100) : 0;
-            percent = Math.max(0, Math.min(100, percent));
-            setProgressVisibility(true);
-            $scanBar.css('width', percent + '%');
-            if(!scanTotal){
-                $scanLabel.text(idleText);
-                return;
-            }
-            $scanLabel.text(percent + '% — ' + processed + '/' + scanTotal);
-            toggleAdminbarScan(true, percent);
-        }
-
-        function scanFail(msg){
-            finalizeScan(msg || idleText);
-        }
-
-        function runScanStep(){
-            $.post(ajaxurl,{action:'beeclear_ilm_step_overview_scan', _ajax_nonce: scanNonce, batch: scanSpeed}, function(resp){
-                if(!resp || !resp.success){
-                    scanFail(resp && resp.data && resp.data.message ? resp.data.message : scanMessages.failed);
-                    return;
-                }
-                var data = resp.data || {};
-                scanTotal = data.total || scanTotal;
-                updateScanStatus(data.processed || 0);
-                if(!data.done){
-                    setTimeout(runScanStep, 1000);
-                } else {
-                    $scanLabel.text(scanMessages.done);
-                    if(data.summary_html && $scanSummary.length){
-                        $scanSummary.html(data.summary_html);
-                    }
-                    finalizeScan();
-                }
-            }).fail(function(){
-                scanFail(scanMessages.failed);
-            });
-        }
+        $scanProgress.attr('hidden', 'hidden').css('display', 'none');
 
         $scanBtn.on('click', function(e){
             e.preventDefault();
-            if(scanRunning) return;
-            scanRunning = true;
-            scanTotal = 0;
+            if($scanBtn.prop('disabled')) return;
             $scanBtn.prop('disabled', true);
-            resetProgress();
             $scanLabel.text(scanMessages.prepare);
-            setProgressVisibility(true);
-            toggleAdminbarScan(true, 0);
+            $scanProgress.removeAttr('hidden').css('display', 'block');
+            $scanBar.css('width', '0%');
+            updateAdminBarScan(0);
 
             $.post(ajaxurl,{action:'beeclear_ilm_start_overview_scan', _ajax_nonce: scanNonce}, function(resp){
                 if(!resp || !resp.success){
-                    scanFail(resp && resp.data && resp.data.message ? resp.data.message : scanMessages.unable);
+                    $scanLabel.text(resp && resp.data && resp.data.message ? resp.data.message : scanMessages.unable);
+                    $scanBtn.prop('disabled', false);
+                    removeAdminBarScan();
                     return;
                 }
-                scanTotal = resp.data && resp.data.total ? resp.data.total : 0;
-                if(!scanTotal){
-                    scanFail(scanMessages.empty);
+                var total = resp.data && resp.data.total ? resp.data.total : 0;
+                if(!total){
+                    $scanLabel.text(scanMessages.empty);
+                    $scanBtn.prop('disabled', false);
+                    removeAdminBarScan();
                     return;
                 }
-                updateScanStatus(0);
-                runScanStep();
+                $scanLabel.text('0% — 0/' + total);
+                startScanPoll();
             }).fail(function(){
-                scanFail(scanMessages.unable);
+                $scanLabel.text(scanMessages.unable);
+                $scanBtn.prop('disabled', false);
+                removeAdminBarScan();
             });
         });
     }
@@ -2344,22 +2336,52 @@ JS;
             if ( empty( $state ) || empty( $state['ids'] ) ) {
                 return;
             }
-            $batch_size = 20;
-            $max_time   = 25; // seconds – stay well under PHP / WP-Cron limits.
-            $start      = time();
-            do {
-                $result = $this->process_overview_scan_batch( $batch_size );
-                if ( ! empty( $result['done'] ) ) {
-                    return;
-                }
-            } while ( ( time() - $start ) < $max_time );
-            // Not finished yet – reschedule for another chunk.
+
+            $settings   = get_option( self::OPT_SETTINGS, array() );
+            $batch_size = isset( $settings['scan_pages_per_second'] ) ? max( 1, min( 20, intval( $settings['scan_pages_per_second'] ) ) ) : 1;
+
+            $result = $this->process_overview_scan_batch( $batch_size );
+
+            if ( ! empty( $result['done'] ) ) {
+                return;
+            }
+
+            // Not finished yet – reschedule after 1 second to match configured speed.
             if ( ! wp_next_scheduled( 'beeclear_ilm_async_scan' ) ) {
-                wp_schedule_single_event( time() + 5, 'beeclear_ilm_async_scan' );
+                wp_schedule_single_event( time() + 1, 'beeclear_ilm_async_scan' );
                 if ( function_exists( 'spawn_cron' ) ) {
                     spawn_cron();
                 }
             }
+        }
+
+        /**
+         * Server-side admin bar node – rendered on every admin page when a scan
+         * is in progress.  The JS polling script updates it in real-time.
+         */
+        public function admin_bar_scan_progress( $wp_admin_bar ) {
+            if ( ! current_user_can( 'manage_options' ) ) {
+                return;
+            }
+            $state = get_option( self::OPT_OVERVIEW_SCAN, array() );
+            if ( empty( $state ) || empty( $state['ids'] ) ) {
+                return;
+            }
+            $processed = isset( $state['processed'] ) ? (int) $state['processed'] : 0;
+            $total     = isset( $state['total'] ) ? (int) $state['total'] : 0;
+            $percent   = $total ? min( 100, round( ( $processed / $total ) * 100 ) ) : 0;
+
+            $label = esc_html( sprintf( __( 'Scan %d%%', 'beeclear-smart-link-manager-premium' ), $percent ) );
+
+            $wp_admin_bar->add_node( array(
+                'id'    => 'beeclear-ilm-scan',
+                'title' => '<span class="beeclear-adminbar-scan-label">' . $label . '</span>'
+                         . '<span class="beeclear-adminbar-scan-track" style="display:inline-block;width:60px;height:10px;background:#455a64;border-radius:3px;margin-left:6px;vertical-align:middle;overflow:hidden;">'
+                         . '<span class="beeclear-adminbar-scan-bar" style="display:block;height:100%;width:' . $percent . '%;background:#76c442;border-radius:3px;transition:width .3s;"></span>'
+                         . '</span>',
+                'href'  => esc_url( admin_url( 'admin.php?page=beeclear-ilm' ) ),
+                'meta'  => array( 'class' => 'beeclear-ilm-scan-node' ),
+            ) );
         }
 
         private function maybe_run_overview_scan_after_save() {
@@ -4907,25 +4929,49 @@ JS;
             update_option( self::OPT_OVERVIEW_SCAN, $state, false );
             /* translators: %d: number of pages queued for the overview scan. */
             $this->log_activity( sprintf( __( 'Scan started: %d pages queued.', 'beeclear-smart-link-manager-premium' ), count( $ids ) ) );
+
+            // Schedule background processing via WP-Cron.
+            if ( ! wp_next_scheduled( 'beeclear_ilm_async_scan' ) ) {
+                wp_schedule_single_event( time(), 'beeclear_ilm_async_scan' );
+                if ( function_exists( 'spawn_cron' ) ) {
+                    spawn_cron();
+                }
+            }
+
             wp_send_json_success( array(
                 'total' => count( $ids ),
             ) );
         }
 
-        public function ajax_step_overview_scan() {
+        /**
+         * AJAX endpoint returning current scan progress (read-only, no processing).
+         */
+        public function ajax_scan_status() {
             check_ajax_referer( self::NONCE );
-            if ( !current_user_can( 'manage_options' ) ) {
+            if ( ! current_user_can( 'manage_options' ) ) {
                 wp_send_json_error( array(
                     'message' => __( 'Access denied.', 'beeclear-smart-link-manager-premium' ),
                 ) );
             }
-            $batch_raw = ( isset( $_POST['batch'] ) ? sanitize_text_field( wp_unslash( $_POST['batch'] ) ) : 5 );
-            $batch = (int) $batch_raw;
-            $result = $this->process_overview_scan_batch( $batch );
-            if ( !empty( $result['done'] ) ) {
+
+            $state = get_option( self::OPT_OVERVIEW_SCAN, array() );
+
+            if ( empty( $state ) || empty( $state['ids'] ) ) {
+                // Scan finished or not running.
+                $result = array(
+                    'done'      => true,
+                    'processed' => isset( $state['total'] ) ? (int) $state['total'] : 0,
+                    'total'     => isset( $state['total'] ) ? (int) $state['total'] : 0,
+                );
                 $result['summary_html'] = $this->render_scan_summary_html();
+                wp_send_json_success( $result );
             }
-            wp_send_json_success( $result );
+
+            wp_send_json_success( array(
+                'done'      => false,
+                'processed' => isset( $state['processed'] ) ? (int) $state['processed'] : 0,
+                'total'     => isset( $state['total'] ) ? (int) $state['total'] : 0,
+            ) );
         }
 
         public function ajax_fetch_logs() {
