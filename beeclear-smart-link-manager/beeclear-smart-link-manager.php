@@ -768,13 +768,13 @@ if (!class_exists('BeeClear_ILM', false)):
             return $ids;
         }
 
-        private function scan_single_post_for_overview($post_id)
+        private function scan_single_post_for_overview($post_id, $cached_settings = null)
         {
             $post = get_post($post_id);
             if (!$post || $post->post_status !== 'publish')
                 return;
 
-            $settings = get_option(self::OPT_SETTINGS, array());
+            $settings = ($cached_settings !== null ? $cached_settings : get_option(self::OPT_SETTINGS, array()));
             $pts = !empty($settings['process_post_types']) ? (array) $settings['process_post_types'] : array('post', 'page');
             if (!in_array($post->post_type, $pts, true))
                 return;
@@ -799,12 +799,26 @@ if (!class_exists('BeeClear_ILM', false)):
             $GLOBALS['post'] = $previous_post;
         }
 
+        private $scan_external_map_buffer = null;
+
+        private function flush_external_matches_buffer()
+        {
+            if ($this->scan_external_map_buffer !== null) {
+                update_option(self::OPT_EXTERNAL_MAP, $this->scan_external_map_buffer, false);
+                $this->scan_external_map_buffer = null;
+            }
+        }
+
         private function persist_external_matches_for_post($post_id)
         {
             if (empty($this->external_matches_log))
                 return;
 
-            $map = get_option(self::OPT_EXTERNAL_MAP, array());
+            if ($this->scan_external_map_buffer !== null) {
+                $map = $this->scan_external_map_buffer;
+            } else {
+                $map = get_option(self::OPT_EXTERNAL_MAP, array());
+            }
             foreach ($this->external_matches_log as $entry) {
                 $idx = isset($entry['rule_idx']) ? (int) $entry['rule_idx'] : -1;
                 $count = isset($entry['count']) ? (int) $entry['count'] : 0;
@@ -844,7 +858,11 @@ if (!class_exists('BeeClear_ILM', false)):
                 }
             }
 
-            update_option(self::OPT_EXTERNAL_MAP, $map, false);
+            if ($this->scan_external_map_buffer !== null) {
+                $this->scan_external_map_buffer = $map;
+            } else {
+                update_option(self::OPT_EXTERNAL_MAP, $map, false);
+            }
             $this->external_matches_log = array();
         }
 
@@ -860,14 +878,27 @@ if (!class_exists('BeeClear_ILM', false)):
                 return array('done' => true, 'processed' => $processed, 'total' => $total);
             }
 
-            $limit = max(1, (int) $batch_size);
-            for ($i = 0; $i < $limit && $processed < $total; $i++) {
+            $settings = get_option(self::OPT_SETTINGS, array());
+            $scan_time_limit = isset($settings['scan_time_limit']) ? (float) $settings['scan_time_limit'] : 3.0;
+            $scan_time_limit = max(0.5, min(10.0, $scan_time_limit));
+            $start_time = microtime(true);
+            $batch_count = 0;
+            $this->scan_external_map_buffer = get_option(self::OPT_EXTERNAL_MAP, array());
+
+            while ($processed < $total) {
                 $pid = isset($ids[$processed]) ? (int) $ids[$processed] : 0;
                 if ($pid > 0) {
-                    $this->scan_single_post_for_overview($pid);
+                    $this->scan_single_post_for_overview($pid, $settings);
                 }
                 $processed++;
+                $batch_count++;
+                $elapsed = microtime(true) - $start_time;
+                if ($elapsed >= $scan_time_limit) {
+                    break;
+                }
             }
+
+            $this->flush_external_matches_buffer();
 
             $state['processed'] = $processed;
             $state['total'] = $total;
@@ -1325,7 +1356,7 @@ jQuery(function($){
         }
 
         function runScanStep(){
-            $.post(ajaxurl,{action:'beeclear_ilm_step_overview_scan', batch:5, _ajax_nonce: scanNonce}, function(resp){
+            $.post(ajaxurl,{action:'beeclear_ilm_step_overview_scan', _ajax_nonce: scanNonce}, function(resp){
                 if(!resp || !resp.success){
                     scanFail(resp && resp.data && resp.data.message ? resp.data.message : scanMessages.failed);
                     return;
@@ -1334,7 +1365,7 @@ jQuery(function($){
                 scanTotal = data.total || scanTotal;
                 updateScanStatus(data.processed || 0);
                 if(!data.done){
-                    setTimeout(runScanStep, 300);
+                    setTimeout(runScanStep, 50);
                 } else {
                     $scanLabel.text(scanMessages.done);
                     if(data.summary_html && $scanSummary.length){
@@ -2059,7 +2090,7 @@ jQuery(function($){
             }
 
             do {
-                $result = $this->process_overview_scan_batch(5);
+                $result = $this->process_overview_scan_batch(50);
             } while (empty($result['done']));
 
             return true;
