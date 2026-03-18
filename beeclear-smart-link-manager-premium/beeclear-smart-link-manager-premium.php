@@ -1061,22 +1061,16 @@ if ( !class_exists( 'BeeClear_ILM', false ) ) {
                 );
             }
             $settings = get_option( self::OPT_SETTINGS, array() );
-            $scan_time_limit = ( isset( $settings['scan_time_limit'] ) ? (float) $settings['scan_time_limit'] : 3.0 );
-            $scan_time_limit = max( 0.5, min( 10.0, $scan_time_limit ) );
             $start_time = microtime( true );
             $batch_count = 0;
             $this->scan_external_map_buffer = get_option( self::OPT_EXTERNAL_MAP, array() );
-            while ( $processed < $total ) {
+            while ( $processed < $total && $batch_count < $batch_size ) {
                 $pid = ( isset( $ids[$processed] ) ? (int) $ids[$processed] : 0 );
                 if ( $pid > 0 ) {
                     $this->scan_single_post_for_overview( $pid, $settings );
                 }
                 $processed++;
                 $batch_count++;
-                $elapsed = microtime( true ) - $start_time;
-                if ( $elapsed >= $scan_time_limit ) {
-                    break;
-                }
             }
             $this->flush_external_matches_buffer();
             $state['processed'] = $processed;
