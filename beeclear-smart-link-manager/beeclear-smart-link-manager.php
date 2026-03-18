@@ -162,6 +162,7 @@ if (!class_exists('BeeClear_ILM', false)):
                 'auto_scan_on_save' => false,
                 'auto_scan_on_external' => false,
                 'activity_log_limit' => '',
+                'scan_pages_per_second' => 1,
             );
             add_option(self::OPT_SETTINGS, $defaults, '', false);
             add_option(self::OPT_INDEX, array(), '', false);
@@ -457,6 +458,8 @@ if (!class_exists('BeeClear_ILM', false)):
 
     $log_limit_raw            = isset($in['activity_log_limit']) ? trim((string) $in['activity_log_limit']) : '';
     $out['activity_log_limit'] = ($log_limit_raw === '') ? '' : max(1, intval($log_limit_raw));
+
+    $out['scan_pages_per_second'] = max(1, min(20, intval(isset($in['scan_pages_per_second']) ? $in['scan_pages_per_second'] : 1)));
 
     return $out;
 }
@@ -1208,7 +1211,9 @@ public function admin_assets($hook)
                 'scan_empty' => __('Nothing to scan.', 'beeclear-smart-link-manager'),
                 'scan_running' => __('Overview scan in progress…', 'beeclear-smart-link-manager'),
             );
-            wp_add_inline_script('jquery', 'window.BeeClearILM = window.BeeClearILM || {}; BeeClearILM.i18n = ' . wp_json_encode($L) . '; BeeClearILM.nonce = ' . wp_json_encode(wp_create_nonce(self::NONCE)) . '; BeeClearILM.settingsUrl = ' . wp_json_encode(esc_url(admin_url('admin.php?page=beeclear-ilm'))) . ';', 'before');
+            $s_opts = get_option(self::OPT_SETTINGS, array());
+            $scan_speed = isset($s_opts['scan_pages_per_second']) ? max(1, min(20, intval($s_opts['scan_pages_per_second']))) : 1;
+            wp_add_inline_script('jquery', 'window.BeeClearILM = window.BeeClearILM || {}; BeeClearILM.i18n = ' . wp_json_encode($L) . '; BeeClearILM.nonce = ' . wp_json_encode(wp_create_nonce(self::NONCE)) . '; BeeClearILM.settingsUrl = ' . wp_json_encode(esc_url(admin_url('admin.php?page=beeclear-ilm'))) . '; BeeClearILM.scanSpeed = ' . wp_json_encode($scan_speed) . ';', 'before');
 
             ob_start();
             ?>
@@ -1290,7 +1295,8 @@ jQuery(function($){
         empty: L.scan_empty || 'Nothing to scan.'
     };
     var scanNonce = (window.BeeClearILM && BeeClearILM.nonce) ? BeeClearILM.nonce : '',
-        settingsUrl = (window.BeeClearILM && BeeClearILM.settingsUrl) ? BeeClearILM.settingsUrl : '';
+        settingsUrl = (window.BeeClearILM && BeeClearILM.settingsUrl) ? BeeClearILM.settingsUrl : '',
+        scanSpeed = (window.BeeClearILM && BeeClearILM.scanSpeed) ? parseInt(BeeClearILM.scanSpeed, 10) : 1;
 
     var $scanBtn = $('#beeclear-ilm-start-overview-scan'),
         $scanProgress = $('#beeclear-ilm-progress'),
@@ -1313,18 +1319,26 @@ jQuery(function($){
             }
         }
 
-        function toggleAdminbarScan(running){
+        function toggleAdminbarScan(running, percent){
             var $menu = $('#wp-admin-bar-root-default');
             if(!$menu.length) return;
             var $item = $('#wp-admin-bar-beeclear-ilm-scan');
             if(running){
+                var pct = typeof percent === 'number' ? percent : 0;
+                var label = (L.scan_running || 'Scan') + ' ' + pct + '%';
                 if(!$item.length){
                     $item = $('<li>', {id: 'wp-admin-bar-beeclear-ilm-scan'}).append(
-                        $('<a>', {class: 'ab-item', href: settingsUrl || '#', text: L.scan_running || 'Overview scan in progress…'})
+                        $('<a>', {class: 'ab-item', href: settingsUrl || '#'}).html(
+                            '<span class="beeclear-adminbar-scan-label">' + label + '</span>' +
+                            '<span class="beeclear-adminbar-scan-track" style="display:inline-block;width:60px;height:10px;background:#455a64;border-radius:3px;margin-left:6px;vertical-align:middle;overflow:hidden;">' +
+                            '<span class="beeclear-adminbar-scan-bar" style="display:block;height:100%;width:' + pct + '%;background:#76c442;border-radius:3px;transition:width .3s;"></span>' +
+                            '</span>'
+                        )
                     );
                     $menu.append($item);
                 } else {
-                    $item.find('a').text(L.scan_running || 'Overview scan in progress…');
+                    $item.find('.beeclear-adminbar-scan-label').text(label);
+                    $item.find('.beeclear-adminbar-scan-bar').css('width', pct + '%');
                 }
             } else {
                 $item.remove();
@@ -1356,6 +1370,7 @@ jQuery(function($){
                 return;
             }
             $scanLabel.text(percent + '% — ' + processed + '/' + scanTotal);
+            toggleAdminbarScan(true, percent);
         }
 
         function scanFail(msg){
@@ -1363,7 +1378,7 @@ jQuery(function($){
         }
 
         function runScanStep(){
-            $.post(ajaxurl,{action:'beeclear_ilm_step_overview_scan', _ajax_nonce: scanNonce}, function(resp){
+            $.post(ajaxurl,{action:'beeclear_ilm_step_overview_scan', _ajax_nonce: scanNonce, batch: scanSpeed}, function(resp){
                 if(!resp || !resp.success){
                     scanFail(resp && resp.data && resp.data.message ? resp.data.message : scanMessages.failed);
                     return;
@@ -1372,7 +1387,7 @@ jQuery(function($){
                 scanTotal = data.total || scanTotal;
                 updateScanStatus(data.processed || 0);
                 if(!data.done){
-                    setTimeout(runScanStep, 500);
+                    setTimeout(runScanStep, 1000);
                 } else {
                     $scanLabel.text(scanMessages.done);
                     if(data.summary_html && $scanSummary.length){
@@ -1394,7 +1409,7 @@ jQuery(function($){
             resetProgress();
             $scanLabel.text(scanMessages.prepare);
             setProgressVisibility(true);
-            toggleAdminbarScan(true);
+            toggleAdminbarScan(true, 0);
 
             $.post(ajaxurl,{action:'beeclear_ilm_start_overview_scan', _ajax_nonce: scanNonce}, function(resp){
                 if(!resp || !resp.success){
@@ -3357,6 +3372,7 @@ jQuery(function($){
             echo '<table class="form-table" role="presentation">';
             echo '<tr><th>' . esc_html__('Auto-run scan after saving content', 'beeclear-smart-link-manager') . '</th><td><label><input type="checkbox" name="' . esc_attr(self::OPT_SETTINGS) . '[auto_scan_on_save]" value="1" ' . checked(!empty($s['auto_scan_on_save']), true, false) . '> ' . esc_html__('Trigger “Scan site” whenever a supported post/page is added or updated.', 'beeclear-smart-link-manager') . '</label><span class="inline-help">' . esc_html__('Runs a full overview scan after publishing updates.', 'beeclear-smart-link-manager') . '</span></td></tr>';
             echo '<tr><th>' . esc_html__('Auto-run scan after saving external rules', 'beeclear-smart-link-manager') . '</th><td><label><input type="checkbox" name="' . esc_attr(self::OPT_SETTINGS) . '[auto_scan_on_external]" value="1" ' . checked(!empty($s['auto_scan_on_external']), true, false) . '> ' . esc_html__('Trigger “Scan site” whenever external rules are updated.', 'beeclear-smart-link-manager') . '</label><span class="inline-help">' . esc_html__('Keeps the external linking overview fresh after edits.', 'beeclear-smart-link-manager') . '</span></td></tr>';
+            echo '<tr><th>' . esc_html__('Scan speed (pages per second)', 'beeclear-smart-link-manager') . '</th><td><input type="number" min="1" max="20" step="1" name="' . esc_attr(self::OPT_SETTINGS) . '[scan_pages_per_second]" value="' . esc_attr(isset($s['scan_pages_per_second']) ? $s['scan_pages_per_second'] : 1) . '"><span class="inline-help">' . esc_html__('How many pages per second the overview scan should process. Lower values reduce server load. Default: 1.', 'beeclear-smart-link-manager') . '</span></td></tr>';
             echo '<tr><th>' . esc_html__('Debug: log autolink timing', 'beeclear-smart-link-manager') . '</th><td><label><input type="checkbox" name="' . esc_attr(self::OPT_SETTINGS) . '[log_internal_timing]" value="1" ' . checked(!empty($s['log_internal_timing']), true, false) . '> ' . esc_html__('Console-log extra render time added by internal linking logic.', 'beeclear-smart-link-manager') . '</label><span class="inline-help">' . esc_html__('Shows how many milliseconds were spent in autolinking during this page load (front-end only).', 'beeclear-smart-link-manager') . '</span></td></tr>';
             echo '</table>';
             echo '</div>';
