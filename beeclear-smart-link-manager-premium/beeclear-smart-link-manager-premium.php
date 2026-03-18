@@ -104,6 +104,12 @@ if ( !class_exists( 'BeeClear_ILM', false ) ) {
         private $last_rebuild_error = '';
 
         /**
+         * Flag to prevent double rebuild_index in the same request
+         * (save_post_rules + trigger_full_rebuild_after_save).
+         */
+        private $index_rebuilt_this_request = false;
+
+        /**
          * Cached author note HTML for admin headers.
          *
          * @var string|null
@@ -216,7 +222,9 @@ if ( !class_exists( 'BeeClear_ILM', false ) ) {
             add_filter( 'widget_text_content', array($this, 'autolink_widget_text'), 9999 );
             add_action( 'admin_enqueue_scripts', array($this, 'admin_assets') );
             add_action( 'admin_head', array($this, 'admin_head_fallback_css') );
+            add_action( 'beeclear_ilm_async_scan', array($this, 'process_async_scan') );
             add_action( 'wp_ajax_beeclear_ilm_expand_sources', array($this, 'ajax_expand_sources') );
+            add_action( 'wp_ajax_beeclear_ilm_expand_sources_paginated', array($this, 'ajax_expand_sources_paginated') );
             add_action( 'wp_ajax_beeclear_ilm_start_overview_scan', array($this, 'ajax_start_overview_scan') );
             add_action( 'wp_ajax_beeclear_ilm_step_overview_scan', array($this, 'ajax_step_overview_scan') );
             add_action( 'wp_ajax_beeclear_ilm_fetch_logs', array($this, 'ajax_fetch_logs') );
@@ -612,7 +620,7 @@ if ( !class_exists( 'BeeClear_ILM', false ) ) {
                 }
                 $phrase_raw = $r['phrase'] ?? '';
                 $url_raw = $r['url'] ?? '';
-                $phrase = ( is_string( $phrase_raw ) ? trim( wp_unslash( $phrase_raw ) ) : '' );
+                $phrase = ( is_string( $phrase_raw ) ? sanitize_text_field( trim( wp_unslash( $phrase_raw ) ) ) : '' );
                 $url = ( is_string( $url_raw ) ? esc_url_raw( trim( wp_unslash( $url_raw ) ) ) : '' );
                 if ( $phrase === '' || $url === '' ) {
                     continue;
@@ -1460,7 +1468,7 @@ jQuery(function($){
                 scanTotal = data.total || scanTotal;
                 updateScanStatus(data.processed || 0);
                 if(!data.done){
-                    setTimeout(runScanStep, 50);
+                    setTimeout(runScanStep, 500);
                 } else {
                     $scanLabel.text(scanMessages.done);
                     if(data.summary_html && $scanSummary.length){
@@ -2268,7 +2276,10 @@ JS;
             if ( get_post_status( $post_ID ) !== 'publish' ) {
                 return;
             }
-            $this->rebuild_index();
+            // Skip if save_post_rules() already rebuilt the index in this request.
+            if ( ! $this->index_rebuilt_this_request ) {
+                $this->rebuild_index();
+            }
             $this->maybe_run_overview_scan_after_save();
         }
 
@@ -2301,10 +2312,44 @@ JS;
             if ( $log_message !== '' ) {
                 $this->log_activity( sprintf( $log_message, count( $ids ) ) );
             }
-            do {
-                $result = $this->process_overview_scan_batch( 50 );
-            } while ( empty( $result['done'] ) );
+            // Schedule asynchronous scan via WP-Cron to avoid blocking the
+            // current HTTP request (long-running synchronous loops trigger
+            // WAF timeout / DoS rules and cause IP bans).
+            if ( ! wp_next_scheduled( 'beeclear_ilm_async_scan' ) ) {
+                wp_schedule_single_event( time(), 'beeclear_ilm_async_scan' );
+                if ( function_exists( 'spawn_cron' ) ) {
+                    spawn_cron();
+                }
+            }
             return true;
+        }
+
+        /**
+         * WP-Cron callback that processes the queued overview scan in small
+         * batches.  Runs outside the user-facing request so it cannot trigger
+         * WAF rate-limit or timeout rules.
+         */
+        public function process_async_scan() {
+            $state = get_option( self::OPT_OVERVIEW_SCAN, array() );
+            if ( empty( $state ) || empty( $state['ids'] ) ) {
+                return;
+            }
+            $batch_size = 20;
+            $max_time   = 25; // seconds – stay well under PHP / WP-Cron limits.
+            $start      = time();
+            do {
+                $result = $this->process_overview_scan_batch( $batch_size );
+                if ( ! empty( $result['done'] ) ) {
+                    return;
+                }
+            } while ( ( time() - $start ) < $max_time );
+            // Not finished yet – reschedule for another chunk.
+            if ( ! wp_next_scheduled( 'beeclear_ilm_async_scan' ) ) {
+                wp_schedule_single_event( time() + 5, 'beeclear_ilm_async_scan' );
+                if ( function_exists( 'spawn_cron' ) ) {
+                    spawn_cron();
+                }
+            }
         }
 
         private function maybe_run_overview_scan_after_save() {
@@ -2319,6 +2364,7 @@ JS;
 
         private function rebuild_index( $log_message = '' ) {
             $this->last_rebuild_error = '';
+            $this->index_rebuilt_this_request = true;
             if ( $log_message === '' ) {
                 $log_message = __( 'Index rebuild triggered.', 'beeclear-smart-link-manager-premium' );
             }
@@ -4223,32 +4269,13 @@ JS;
             echo '<th class="col-inbound">' . esc_html( $links_label ) . '</th>';
             $middle_label = ( $view === 'sources' ? __( 'Targets', 'beeclear-smart-link-manager-premium' ) : __( 'Sources', 'beeclear-smart-link-manager-premium' ) );
             echo '<th class="' . esc_attr( ( $view === 'sources' ? 'col-targets' : 'col-sources' ) ) . '">' . esc_html( $middle_label ) . '</th>';
-            if ( $view === 'targets' || $view === 'external' ) {
-                echo '<th class="col-defined">' . esc_html__( 'Defined phrases', 'beeclear-smart-link-manager-premium' ) . '</th>';
-            }
             echo '</tr></thead><tbody>';
             foreach ( $paged_rows as $row ) {
                 $title = $row['title'];
                 $perma = $row['perma'];
                 $edit = $row['edit'];
                 $entry_id_attr = esc_attr( (string) $row['id'] );
-                $btn = '<button type="button" class="button button-small beeclear-ilm-expand" data-entry="' . esc_attr( $entry_id_attr ) . '" data-view="' . esc_attr( $view ) . '">' . esc_html__( 'Show', 'beeclear-smart-link-manager-premium' ) . '</button>';
-                $plist = '';
-                if ( $view === 'targets' && !empty( $row['phrases'] ) ) {
-                    $items = array();
-                    foreach ( $row['phrases'] as $r ) {
-                        $badge = ( !empty( $r['regex'] ) ? 'regex' : (( !empty( $r['case'] ) ? 'case' : (( $this->contains_tokens( $r['phrase'] ) ? 'tokens' : '' )) )) );
-                        $items[] = esc_html( $r['phrase'] ) . (( $badge ? ' <span style="opacity:.7">[' . esc_html( $badge ) . ']</span>' : '' ));
-                    }
-                    $plist = '<div style="max-width:380px; white-space:normal">' . implode( ', ', $items ) . '</div>';
-                } elseif ( $view === 'external' && !empty( $row['phrases'] ) ) {
-                    $items = array();
-                    foreach ( $row['phrases'] as $phrase ) {
-                        $items[] = esc_html( $phrase );
-                    }
-                    $plist = '<div style="max-width:380px; white-space:normal">' . implode( ', ', $items ) . '</div>';
-                }
-                $container_id = 'beeclear-ilm-expansion-' . esc_attr( $view ) . '-' . esc_attr( $entry_id_attr );
+                $btn = '<button type="button" class="button button-small beeclear-ilm-popup-btn" data-entry="' . esc_attr( $entry_id_attr ) . '" data-view="' . esc_attr( $view ) . '" data-title="' . esc_attr( $title ) . '">' . esc_html__( 'Show details', 'beeclear-smart-link-manager-premium' ) . '</button>';
                 echo '<tr>';
                 echo '<td class="col-target">' . (( $perma ? '<a href="' . esc_url( $perma ) . '" target="_blank" rel="noopener">' : '' )) . esc_html( $title ) . (( $perma ? '</a>' : '' ));
                 if ( $edit ) {
@@ -4265,10 +4292,7 @@ JS;
                 }
                 echo '<td class="col-inbound">' . esc_html( $link_count ) . '</td>';
                 $col_class = ( $view === 'sources' ? 'col-targets' : 'col-sources' );
-                echo '<td class="' . esc_attr( $col_class ) . '">' . wp_kses_post( $btn ) . '<div id="' . esc_attr( $container_id ) . '" style="margin-top:6px"></div></td>';
-                if ( $view === 'targets' || $view === 'external' ) {
-                    echo '<td class="col-defined">' . wp_kses_post( $plist ) . '</td>';
-                }
+                echo '<td class="' . esc_attr( $col_class ) . '">' . wp_kses_post( $btn ) . '</td>';
                 echo '</tr>';
             }
             echo '</tbody></table>';
@@ -4281,15 +4305,107 @@ JS;
                 echo '</div>';
                 echo '</div>';
             }
+            // Popup modal for paginated details.
+            echo '<div id="beeclear-ilm-popup-overlay" class="beeclear-ilm-popup-overlay" hidden>';
+            echo '<div class="beeclear-ilm-popup-modal">';
+            echo '<div class="beeclear-ilm-popup-header">';
+            echo '<h3 id="beeclear-ilm-popup-title"></h3>';
+            echo '<button type="button" class="beeclear-ilm-popup-close" aria-label="' . esc_attr__( 'Close', 'beeclear-smart-link-manager-premium' ) . '">&times;</button>';
+            echo '</div>';
+            echo '<div id="beeclear-ilm-popup-body" class="beeclear-ilm-popup-body"></div>';
+            echo '<div id="beeclear-ilm-popup-pagination" class="beeclear-ilm-popup-pagination"></div>';
+            echo '</div>';
+            echo '</div>';
+            echo '<style>
+            .beeclear-ilm-popup-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.55);z-index:100100;display:flex;align-items:center;justify-content:center}
+            .beeclear-ilm-popup-overlay[hidden]{display:none}
+            .beeclear-ilm-popup-modal{background:#fff;border-radius:8px;width:90%;max-width:780px;max-height:85vh;display:flex;flex-direction:column;box-shadow:0 8px 32px rgba(0,0,0,.25)}
+            .beeclear-ilm-popup-header{display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid #ddd}
+            .beeclear-ilm-popup-header h3{margin:0;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:calc(100% - 40px)}
+            .beeclear-ilm-popup-close{background:none;border:none;font-size:24px;cursor:pointer;padding:0 4px;line-height:1;color:#666}
+            .beeclear-ilm-popup-close:hover{color:#000}
+            .beeclear-ilm-popup-body{overflow-y:auto;padding:16px 20px;flex:1}
+            .beeclear-ilm-popup-body table{width:100%;border-collapse:collapse}
+            .beeclear-ilm-popup-body th,.beeclear-ilm-popup-body td{padding:6px 10px;border-bottom:1px solid #eee;text-align:left;vertical-align:top;font-size:13px}
+            .beeclear-ilm-popup-body th{font-weight:600;white-space:nowrap}
+            .beeclear-ilm-popup-body .beeclear-ctx-snippet{color:#666;font-size:12px;max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+            .beeclear-ilm-popup-pagination{padding:10px 20px;border-top:1px solid #ddd;text-align:center;display:flex;gap:6px;justify-content:center;flex-wrap:wrap}
+            .beeclear-ilm-popup-pagination button{min-width:32px;padding:4px 10px;border:1px solid #ccc;background:#f7f7f7;cursor:pointer;border-radius:3px;font-size:13px}
+            .beeclear-ilm-popup-pagination button.current{background:#2271b1;color:#fff;border-color:#2271b1}
+            .beeclear-ilm-popup-pagination button:hover:not(.current){background:#e5e5e5}
+            .beeclear-ilm-popup-pagination .beeclear-popup-page-info{align-self:center;font-size:12px;color:#666}
+            </style>';
             echo '<script>
         jQuery(function($){
-            $(document).on("click",".beeclear-ilm-expand", function(){
-                var $b=$(this), id=$b.data("entry"), view=$b.data("view"), box=$("#beeclear-ilm-expansion-"+view+"-"+id);
-                if(box.data("loaded")){ box.toggle(); return; }
-                $b.prop("disabled",true).text("…");
-                $.post(ajaxurl,{action:"beeclear_ilm_expand_sources", id:id, view:view, _ajax_nonce:"' . esc_js( wp_create_nonce( self::NONCE ) ) . '"}, function(html){
-                    box.html(html).data("loaded",true);
-                }).always(function(){ $b.prop("disabled",false).text("' . esc_js( __( 'Toggle', 'beeclear-smart-link-manager-premium' ) ) . '"); });
+            var popupNonce="' . esc_js( wp_create_nonce( self::NONCE ) ) . '";
+            var $overlay=$("#beeclear-ilm-popup-overlay"),
+                $title=$("#beeclear-ilm-popup-title"),
+                $body=$("#beeclear-ilm-popup-body"),
+                $pagination=$("#beeclear-ilm-popup-pagination"),
+                currentEntry=null, currentView=null;
+
+            function openPopup(id,view,title,page){
+                currentEntry=id; currentView=view;
+                $title.text(title);
+                $body.html("<p>' . esc_js( __( 'Loading…', 'beeclear-smart-link-manager-premium' ) ) . '</p>");
+                $pagination.empty();
+                $overlay.removeAttr("hidden");
+                loadPopupPage(page||1);
+            }
+
+            function closePopup(){
+                $overlay.attr("hidden","hidden");
+                $body.empty(); $pagination.empty();
+                currentEntry=null; currentView=null;
+            }
+
+            function loadPopupPage(page){
+                $.post(ajaxurl,{
+                    action:"beeclear_ilm_expand_sources_paginated",
+                    id:currentEntry, view:currentView, popup_page:page,
+                    _ajax_nonce:popupNonce
+                },function(resp){
+                    if(!resp||!resp.success){
+                        $body.html("<p>' . esc_js( __( 'Error loading data.', 'beeclear-smart-link-manager-premium' ) ) . '</p>");
+                        return;
+                    }
+                    $body.html(resp.data.html);
+                    renderPagination(resp.data.page,resp.data.total_pages,resp.data.total_items);
+                }).fail(function(){
+                    $body.html("<p>' . esc_js( __( 'Request failed.', 'beeclear-smart-link-manager-premium' ) ) . '</p>");
+                });
+            }
+
+            function renderPagination(page,totalPages,totalItems){
+                $pagination.empty();
+                if(totalPages<=1){ $pagination.append("<span class=\"beeclear-popup-page-info\">"+totalItems+" ' . esc_js( __( 'items', 'beeclear-smart-link-manager-premium' ) ) . '</span>"); return; }
+                var info=$("<span>",{class:"beeclear-popup-page-info",text:page+"/"+totalPages+" ("+totalItems+" ' . esc_js( __( 'items', 'beeclear-smart-link-manager-premium' ) ) . ')"});
+                if(page>1){
+                    $pagination.append($("<button>",{text:"«","data-page":1}));
+                    $pagination.append($("<button>",{text:"‹","data-page":page-1}));
+                }
+                var startP=Math.max(1,page-2), endP=Math.min(totalPages,page+2);
+                for(var i=startP;i<=endP;i++){
+                    var $btn=$("<button>",{text:i,"data-page":i});
+                    if(i===page) $btn.addClass("current");
+                    $pagination.append($btn);
+                }
+                if(page<totalPages){
+                    $pagination.append($("<button>",{text:"›","data-page":page+1}));
+                    $pagination.append($("<button>",{text:"»","data-page":totalPages}));
+                }
+                $pagination.append(info);
+            }
+
+            $(document).on("click",".beeclear-ilm-popup-btn",function(){
+                var $b=$(this);
+                openPopup($b.data("entry"),$b.data("view"),$b.data("title"),1);
+            });
+            $overlay.on("click",".beeclear-ilm-popup-close",closePopup);
+            $overlay.on("click",function(e){ if(e.target===$overlay[0]) closePopup(); });
+            $(document).on("keydown",function(e){ if(e.key==="Escape") closePopup(); });
+            $pagination.on("click","button[data-page]",function(){
+                loadPopupPage(parseInt($(this).data("page"),10));
             });
         });
         </script>';
@@ -4524,6 +4640,204 @@ JS;
                 echo '</ul>';
             }
             wp_die();
+        }
+
+        /**
+         * AJAX handler for the paginated popup in the linking overview table.
+         * Returns a table of phrase → source/target → context rows with
+         * pagination at 50 items per page.
+         */
+        public function ajax_expand_sources_paginated() {
+            check_ajax_referer( self::NONCE );
+            if ( ! current_user_can( 'manage_options' ) ) {
+                wp_send_json_error( array( 'message' => __( 'Access denied.', 'beeclear-smart-link-manager-premium' ) ) );
+            }
+            $raw_id     = ( isset( $_POST['id'] ) ? sanitize_text_field( wp_unslash( $_POST['id'] ) ) : '' );
+            $view_param = ( isset( $_POST['view'] ) ? sanitize_text_field( wp_unslash( $_POST['view'] ) ) : 'targets' );
+            $view       = ( in_array( $view_param, array( 'targets', 'sources', 'external' ), true ) ? $view_param : 'targets' );
+            $id         = ( $view === 'external' ? sanitize_text_field( $raw_id ) : (int) $raw_id );
+            $page       = max( 1, (int) ( isset( $_POST['popup_page'] ) ? sanitize_text_field( wp_unslash( $_POST['popup_page'] ) ) : 1 ) );
+            $per_page   = 50;
+
+            $items = $this->collect_popup_items( $id, $view );
+
+            $total_items = count( $items );
+            $total_pages = max( 1, (int) ceil( $total_items / $per_page ) );
+            $page        = min( $page, $total_pages );
+            $offset      = ( $page - 1 ) * $per_page;
+            $paged       = array_slice( $items, $offset, $per_page );
+
+            ob_start();
+            if ( empty( $paged ) ) {
+                echo '<p><em>' . esc_html__( 'No data recorded yet. Run the scan first.', 'beeclear-smart-link-manager-premium' ) . '</em></p>';
+            } else {
+                $page_col_label  = ( $view === 'sources' ? __( 'Target', 'beeclear-smart-link-manager-premium' ) : __( 'Source', 'beeclear-smart-link-manager-premium' ) );
+                echo '<table><thead><tr>';
+                echo '<th>' . esc_html__( 'Phrase', 'beeclear-smart-link-manager-premium' ) . '</th>';
+                echo '<th>' . esc_html( $page_col_label ) . '</th>';
+                echo '<th>' . esc_html__( 'Context', 'beeclear-smart-link-manager-premium' ) . '</th>';
+                echo '</tr></thead><tbody>';
+                foreach ( $paged as $item ) {
+                    echo '<tr>';
+                    echo '<td><strong>' . esc_html( $item['phrase'] ) . '</strong></td>';
+                    echo '<td>';
+                    if ( ! empty( $item['page_url'] ) ) {
+                        echo '<a href="' . esc_url( $item['page_url'] ) . '" target="_blank" rel="noopener">' . esc_html( $item['page_title'] ) . '</a>';
+                    } else {
+                        echo esc_html( $item['page_title'] );
+                    }
+                    if ( ! empty( $item['edit_url'] ) ) {
+                        echo ' <a href="' . esc_url( $item['edit_url'] ) . '" title="' . esc_attr__( 'Edit', 'beeclear-smart-link-manager-premium' ) . '"><span class="dashicons dashicons-edit" style="font-size:14px;width:14px;height:14px"></span></a>';
+                    }
+                    echo '</td>';
+                    echo '<td>';
+                    if ( ! empty( $item['context_html'] ) ) {
+                        echo '<div class="beeclear-ctx-snippet" title="' . esc_attr( wp_strip_all_tags( $item['context_html'] ) ) . '">' . wp_kses_post( $item['context_html'] ) . '</div>';
+                    } else {
+                        echo '<em>' . esc_html__( '—', 'beeclear-smart-link-manager-premium' ) . '</em>';
+                    }
+                    echo '</td>';
+                    echo '</tr>';
+                }
+                echo '</tbody></table>';
+            }
+            $html = ob_get_clean();
+
+            wp_send_json_success( array(
+                'html'        => $html,
+                'page'        => $page,
+                'total_pages' => $total_pages,
+                'total_items' => $total_items,
+            ) );
+        }
+
+        /**
+         * Collect flat list of popup items for a given entry (target/source/external).
+         * Each item: phrase, page_title, page_url, edit_url, context_html.
+         */
+        private function collect_popup_items( $id, $view ) {
+            $map   = get_option( self::OPT_LINKMAP, array() );
+            $items = array();
+
+            if ( $view === 'targets' ) {
+                // $id = target post ID; show sources that link TO this target.
+                $sources = ( isset( $map[ $id ]['sources'] ) ? (array) $map[ $id ]['sources'] : array() );
+                foreach ( $sources as $sid => $info ) {
+                    $phrases  = ( is_array( $info ) ? (array) ( $info['phrases'] ?? array() ) : array() );
+                    $contexts = ( is_array( $info ) ? (array) ( $info['contexts'] ?? array() ) : array() );
+                    $contexts_by_phrase = $this->group_contexts_by_phrase( $contexts );
+                    $title = get_the_title( $sid );
+                    $perma = get_permalink( $sid );
+                    $edit  = get_edit_post_link( $sid, 'raw' );
+                    if ( ! empty( $contexts_by_phrase ) ) {
+                        foreach ( $contexts_by_phrase as $ph => $ctx_list ) {
+                            foreach ( $ctx_list as $ctx ) {
+                                $items[] = array(
+                                    'phrase'       => $ph,
+                                    'page_title'   => $title,
+                                    'page_url'     => $perma,
+                                    'edit_url'     => $edit,
+                                    'context_html' => $this->format_context_html_for_popup( $ctx['html'] ?? '', $ctx['tag'] ?? '' ),
+                                );
+                            }
+                        }
+                    } elseif ( ! empty( $phrases ) ) {
+                        foreach ( $phrases as $ph => $cnt ) {
+                            $items[] = array(
+                                'phrase'       => $ph,
+                                'page_title'   => $title,
+                                'page_url'     => $perma,
+                                'edit_url'     => $edit,
+                                'context_html' => '',
+                            );
+                        }
+                    }
+                }
+            } elseif ( $view === 'sources' ) {
+                // $id = source post ID; show targets that this source links TO.
+                foreach ( (array) $map as $target_id => $entry ) {
+                    $sources = ( isset( $entry['sources'] ) ? (array) $entry['sources'] : array() );
+                    if ( ! isset( $sources[ $id ] ) ) {
+                        continue;
+                    }
+                    $info     = $sources[ $id ];
+                    $phrases  = ( is_array( $info ) ? (array) ( $info['phrases'] ?? array() ) : array() );
+                    $contexts = ( is_array( $info ) ? (array) ( $info['contexts'] ?? array() ) : array() );
+                    $contexts_by_phrase = $this->group_contexts_by_phrase( $contexts );
+                    $title = get_the_title( $target_id );
+                    $perma = get_permalink( $target_id );
+                    $edit  = get_edit_post_link( $target_id, 'raw' );
+                    if ( ! empty( $contexts_by_phrase ) ) {
+                        foreach ( $contexts_by_phrase as $ph => $ctx_list ) {
+                            foreach ( $ctx_list as $ctx ) {
+                                $items[] = array(
+                                    'phrase'       => $ph,
+                                    'page_title'   => $title,
+                                    'page_url'     => $perma,
+                                    'edit_url'     => $edit,
+                                    'context_html' => $this->format_context_html_for_popup( $ctx['html'] ?? '', $ctx['tag'] ?? '' ),
+                                );
+                            }
+                        }
+                    } elseif ( ! empty( $phrases ) ) {
+                        foreach ( $phrases as $ph => $cnt ) {
+                            $items[] = array(
+                                'phrase'       => $ph,
+                                'page_title'   => $title,
+                                'page_url'     => $perma,
+                                'edit_url'     => $edit,
+                                'context_html' => '',
+                            );
+                        }
+                    }
+                }
+            } elseif ( $view === 'external' ) {
+                $external_rows = $this->build_external_overview_rows();
+                $target = null;
+                foreach ( $external_rows as $row ) {
+                    if ( $row['id'] === $id ) {
+                        $target = $row;
+                        break;
+                    }
+                }
+                if ( $target === null ) {
+                    return $items;
+                }
+                $sources = ( isset( $target['sources'] ) ? (array) $target['sources'] : array() );
+                foreach ( $sources as $sid => $info ) {
+                    $phrases  = ( isset( $info['phrases'] ) ? (array) $info['phrases'] : array() );
+                    $contexts = ( is_array( $info ) ? (array) ( $info['contexts'] ?? array() ) : array() );
+                    $contexts_by_phrase = $this->group_contexts_by_phrase( $contexts );
+                    $title = get_the_title( $sid );
+                    $perma = get_permalink( $sid );
+                    $edit  = get_edit_post_link( $sid, 'raw' );
+                    if ( ! empty( $contexts_by_phrase ) ) {
+                        foreach ( $contexts_by_phrase as $ph => $ctx_list ) {
+                            foreach ( $ctx_list as $ctx ) {
+                                $items[] = array(
+                                    'phrase'       => $ph,
+                                    'page_title'   => $title,
+                                    'page_url'     => $perma,
+                                    'edit_url'     => $edit,
+                                    'context_html' => $this->format_context_html_for_popup( $ctx['html'] ?? '', $ctx['tag'] ?? '' ),
+                                );
+                            }
+                        }
+                    } elseif ( ! empty( $phrases ) ) {
+                        foreach ( $phrases as $ph => $cnt ) {
+                            $items[] = array(
+                                'phrase'       => $ph,
+                                'page_title'   => $title,
+                                'page_url'     => $perma,
+                                'edit_url'     => $edit,
+                                'context_html' => '',
+                            );
+                        }
+                    }
+                }
+            }
+
+            return $items;
         }
 
         public function ajax_start_overview_scan() {
