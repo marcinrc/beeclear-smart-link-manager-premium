@@ -1834,7 +1834,7 @@ JS;
             .beeclear-ilm-context-btn{display:inline-flex;align-items:center;gap:4px;padding:0 2px;border:none;background:none;color:#3858e9;cursor:pointer;text-decoration:none;}
             .beeclear-ilm-context-btn:hover{color:#1d2327;}
             .beeclear-ilm-context-btn .dashicons{margin-top:2px;font-size:16px;}
-            .beeclear-ilm-context-popup{position:fixed;z-index:9999;max-width:100%;width:700px;background:#fff;border:1px solid #dcdcde;box-shadow:0 8px 24px rgba(0,0,0,.12);border-radius:8px;padding:12px;}
+            .beeclear-ilm-context-popup{position:fixed;z-index:100200;max-width:100%;width:700px;background:#fff;border:1px solid #dcdcde;box-shadow:0 8px 24px rgba(0,0,0,.12);border-radius:8px;padding:12px;}
             .beeclear-ilm-context-fragment{padding:8px;border-bottom:1px solid #eef0f3;}
             .beeclear-ilm-context-fragment:last-child{border-bottom:0;}
             .beeclear-ilm-context-tag{font-size:11px;text-transform:uppercase;letter-spacing:.02em;color:#50575e;margin-bottom:6px;font-weight:600;}
@@ -4402,8 +4402,16 @@ JS;
                 openPopup($b.data("entry"),$b.data("view"),$b.data("title"),1);
             });
             $overlay.on("click",".beeclear-ilm-popup-close",closePopup);
-            $overlay.on("click",function(e){ if(e.target===$overlay[0]) closePopup(); });
-            $(document).on("keydown",function(e){ if(e.key==="Escape") closePopup(); });
+            $overlay.on("click",function(e){
+                if(e.target===$overlay[0] && !$(".beeclear-ilm-context-popup:not([hidden])").length) closePopup();
+            });
+            $(document).on("keydown",function(e){
+                if(e.key==="Escape"){
+                    // If a context popup is open, let that handler close it first.
+                    if($(".beeclear-ilm-context-popup:not([hidden])").length) return;
+                    closePopup();
+                }
+            });
             $pagination.on("click","button[data-page]",function(){
                 loadPopupPage(parseInt($(this).data("page"),10));
             });
@@ -4671,12 +4679,13 @@ JS;
             if ( empty( $paged ) ) {
                 echo '<p><em>' . esc_html__( 'No data recorded yet. Run the scan first.', 'beeclear-smart-link-manager-premium' ) . '</em></p>';
             } else {
-                $page_col_label  = ( $view === 'sources' ? __( 'Target', 'beeclear-smart-link-manager-premium' ) : __( 'Source', 'beeclear-smart-link-manager-premium' ) );
+                $page_col_label = ( $view === 'sources' ? __( 'Target', 'beeclear-smart-link-manager-premium' ) : __( 'Source', 'beeclear-smart-link-manager-premium' ) );
                 echo '<table><thead><tr>';
                 echo '<th>' . esc_html__( 'Phrase', 'beeclear-smart-link-manager-premium' ) . '</th>';
                 echo '<th>' . esc_html( $page_col_label ) . '</th>';
                 echo '<th>' . esc_html__( 'Context', 'beeclear-smart-link-manager-premium' ) . '</th>';
                 echo '</tr></thead><tbody>';
+                $popup_idx = 0;
                 foreach ( $paged as $item ) {
                     echo '<tr>';
                     echo '<td><strong>' . esc_html( $item['phrase'] ) . '</strong></td>';
@@ -4692,7 +4701,20 @@ JS;
                     echo '</td>';
                     echo '<td>';
                     if ( ! empty( $item['context_html'] ) ) {
-                        echo '<div class="beeclear-ctx-snippet" title="' . esc_attr( wp_strip_all_tags( $item['context_html'] ) ) . '">' . wp_kses_post( $item['context_html'] ) . '</div>';
+                        $ctx_popup_id = 'beeclear-ilm-pctx-' . $page . '-' . $popup_idx;
+                        $popup_idx++;
+                        $tag_label_html = '';
+                        if ( ! empty( $item['context_tag'] ) ) {
+                            /* translators: %s: HTML tag name where the phrase was found. */
+                            $tag_label_html = '<div class="beeclear-ilm-context-tag">' . sprintf( esc_html__( 'Element: %s', 'beeclear-smart-link-manager-premium' ), esc_html( $item['context_tag'] ) ) . '</div>';
+                        }
+                        echo '<button type="button" class="button-link beeclear-ilm-context-btn" data-target="' . esc_attr( $ctx_popup_id ) . '" aria-expanded="false" aria-controls="' . esc_attr( $ctx_popup_id ) . '" title="' . esc_attr__( 'Show source element', 'beeclear-smart-link-manager-premium' ) . '">';
+                        echo '<span class="dashicons dashicons-format-chat" aria-hidden="true"></span>';
+                        echo '<span class="screen-reader-text">' . esc_html__( 'Show source element', 'beeclear-smart-link-manager-premium' ) . '</span>';
+                        echo '</button>';
+                        echo '<div id="' . esc_attr( $ctx_popup_id ) . '" class="beeclear-ilm-context-popup" hidden>';
+                        echo '<div class="beeclear-ilm-context-fragment">' . $tag_label_html . '<div class="beeclear-ilm-context-html">' . wp_kses_post( $item['context_html'] ) . '</div></div>';
+                        echo '</div>';
                     } else {
                         echo '<em>' . esc_html__( '—', 'beeclear-smart-link-manager-premium' ) . '</em>';
                     }
@@ -4738,6 +4760,7 @@ JS;
                                     'page_url'     => $perma,
                                     'edit_url'     => $edit,
                                     'context_html' => $this->format_context_html_for_popup( $ctx['html'] ?? '', $ctx['tag'] ?? '' ),
+                                    'context_tag'  => ( $ctx['tag'] ?? '' ),
                                 );
                             }
                         }
@@ -4749,6 +4772,7 @@ JS;
                                 'page_url'     => $perma,
                                 'edit_url'     => $edit,
                                 'context_html' => '',
+                                'context_tag'  => '',
                             );
                         }
                     }
@@ -4776,6 +4800,7 @@ JS;
                                     'page_url'     => $perma,
                                     'edit_url'     => $edit,
                                     'context_html' => $this->format_context_html_for_popup( $ctx['html'] ?? '', $ctx['tag'] ?? '' ),
+                                    'context_tag'  => ( $ctx['tag'] ?? '' ),
                                 );
                             }
                         }
@@ -4787,6 +4812,7 @@ JS;
                                 'page_url'     => $perma,
                                 'edit_url'     => $edit,
                                 'context_html' => '',
+                                'context_tag'  => '',
                             );
                         }
                     }
@@ -4820,6 +4846,7 @@ JS;
                                     'page_url'     => $perma,
                                     'edit_url'     => $edit,
                                     'context_html' => $this->format_context_html_for_popup( $ctx['html'] ?? '', $ctx['tag'] ?? '' ),
+                                    'context_tag'  => ( $ctx['tag'] ?? '' ),
                                 );
                             }
                         }
@@ -4831,6 +4858,7 @@ JS;
                                 'page_url'     => $perma,
                                 'edit_url'     => $edit,
                                 'context_html' => '',
+                                'context_tag'  => '',
                             );
                         }
                     }
