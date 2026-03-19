@@ -895,59 +895,21 @@ if ( !class_exists( 'BeeClear_ILM', false ) ) {
 
         private function collect_overview_scan_ids( $post_types ) {
             $ids = array();
-            if ( function_exists( 'wp_sitemaps_get_server' ) ) {
-                $server = wp_sitemaps_get_server();
-                if ( $server ) {
-                    $provider = null;
-                    if ( method_exists( $server, 'get_provider' ) ) {
-                        $provider = $server->get_provider( 'posts' );
-                    } elseif ( property_exists( $server, 'registry' ) && is_object( $server->registry ) && method_exists( $server->registry, 'get_provider' ) ) {
-                        $provider = $server->registry->get_provider( 'posts' );
-                    }
-                    if ( $provider ) {
-                        $subtypes = $provider->get_object_subtypes();
-                        foreach ( (array) $subtypes as $subtype ) {
-                            if ( !in_array( $subtype, $post_types, true ) ) {
-                                continue;
-                            }
-                            $page = 1;
-                            do {
-                                $urls = $provider->get_url_list( $page, $subtype );
-                                if ( empty( $urls ) ) {
-                                    break;
-                                }
-                                foreach ( $urls as $entry ) {
-                                    if ( empty( $entry['loc'] ) ) {
-                                        continue;
-                                    }
-                                    $pid = url_to_postid( $entry['loc'] );
-                                    if ( $pid ) {
-                                        $ids[(int) $pid] = true;
-                                    }
-                                }
-                                $page++;
-                            } while ( !empty( $urls ) );
-                        }
-                    }
-                }
+            if ( !class_exists( 'WP_Query' ) ) {
+                return array();
             }
-            if ( empty( $ids ) ) {
-                if ( !class_exists( 'WP_Query' ) ) {
-                    return array();
-                }
-                $q = new WP_Query(array(
-                    'post_type'      => $post_types,
-                    'post_status'    => 'publish',
-                    'posts_per_page' => -1,
-                    'fields'         => 'ids',
-                    'no_found_rows'  => true,
-                    'orderby'        => 'ID',
-                    'order'          => 'ASC',
-                ));
-                if ( !is_wp_error( $q ) ) {
-                    foreach ( (array) $q->posts as $pid ) {
-                        $ids[(int) $pid] = true;
-                    }
+            $q = new WP_Query(array(
+                'post_type'      => $post_types,
+                'post_status'    => 'publish',
+                'posts_per_page' => -1,
+                'fields'         => 'ids',
+                'no_found_rows'  => true,
+                'orderby'        => 'ID',
+                'order'          => 'ASC',
+            ));
+            if ( !is_wp_error( $q ) ) {
+                foreach ( (array) $q->posts as $pid ) {
+                    $ids[(int) $pid] = true;
                 }
             }
             $ids = array_keys( $ids );
@@ -4488,6 +4450,7 @@ JS;
                     echo '<em>' . esc_html__( 'No targets recorded yet.', 'beeclear-smart-link-manager-premium' ) . '</em>';
                     wp_die();
                 }
+                _prime_post_caches( array_keys( $targets ) );
                 $popup_registry = array();
                 echo '<ul class="ilm-list">';
                 foreach ( $targets as $tid => $info ) {
@@ -4559,6 +4522,7 @@ JS;
                     echo '<em>' . esc_html__( 'No sources recorded yet.', 'beeclear-smart-link-manager-premium' ) . '</em>';
                     wp_die();
                 }
+                _prime_post_caches( array_keys( $sources ) );
                 $popup_registry = array();
                 echo '<ul class="ilm-list">';
                 foreach ( $sources as $sid => $info ) {
@@ -4632,6 +4596,7 @@ JS;
                     echo '<em>' . esc_html__( 'No sources recorded yet.', 'beeclear-smart-link-manager-premium' ) . '</em>';
                     wp_die();
                 }
+                _prime_post_caches( array_keys( $sources ) );
                 $popup_registry = array();
                 echo '<ul class="ilm-list">';
                 foreach ( $sources as $sid => $info ) {
@@ -4782,6 +4747,23 @@ JS;
             $map   = get_option( self::OPT_LINKMAP, array() );
             $items = array();
 
+            // Prime post caches for all post IDs that will be used in the loop.
+            if ( $view === 'targets' ) {
+                $prime_ids = array_keys( isset( $map[ $id ]['sources'] ) ? (array) $map[ $id ]['sources'] : array() );
+            } elseif ( $view === 'sources' ) {
+                $prime_ids = array();
+                foreach ( (array) $map as $target_id => $entry ) {
+                    if ( isset( $entry['sources'] ) && isset( ( (array) $entry['sources'] )[ $id ] ) ) {
+                        $prime_ids[] = (int) $target_id;
+                    }
+                }
+            } else {
+                $prime_ids = array();
+            }
+            if ( ! empty( $prime_ids ) ) {
+                _prime_post_caches( $prime_ids );
+            }
+
             if ( $view === 'targets' ) {
                 // $id = target post ID; show sources that link TO this target.
                 $sources = ( isset( $map[ $id ]['sources'] ) ? (array) $map[ $id ]['sources'] : array() );
@@ -4871,6 +4853,9 @@ JS;
                     return $items;
                 }
                 $sources = ( isset( $target['sources'] ) ? (array) $target['sources'] : array() );
+                if ( ! empty( $sources ) ) {
+                    _prime_post_caches( array_keys( $sources ) );
+                }
                 foreach ( $sources as $sid => $info ) {
                     $phrases  = ( isset( $info['phrases'] ) ? (array) $info['phrases'] : array() );
                     $contexts = ( is_array( $info ) ? (array) ( $info['contexts'] ?? array() ) : array() );
@@ -5300,6 +5285,7 @@ JS;
                     'no_found_rows'  => true,
                 ));
                 if ( !is_wp_error( $q ) ) {
+                    update_postmeta_cache( (array) $q->posts );
                     foreach ( $q->posts as $pid ) {
                         $r = get_post_meta( $pid, self::META_RULES, true );
                         if ( !is_array( $r ) ) {

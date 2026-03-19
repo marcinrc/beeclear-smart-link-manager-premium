@@ -721,58 +721,20 @@ if (!class_exists('BeeClear_ILM', false)):
         {
             $ids = array();
 
-            if (function_exists('wp_sitemaps_get_server')) {
-                $server = wp_sitemaps_get_server();
-                if ($server) {
-                    $provider = null;
-
-                    if (method_exists($server, 'get_provider')) {
-                        $provider = $server->get_provider('posts');
-                    } elseif (property_exists($server, 'registry') && is_object($server->registry) && method_exists($server->registry, 'get_provider')) {
-                        $provider = $server->registry->get_provider('posts');
-                    }
-
-                    if ($provider) {
-                        $subtypes = $provider->get_object_subtypes();
-                        foreach ((array) $subtypes as $subtype) {
-                            if (!in_array($subtype, $post_types, true))
-                                continue;
-                            $page = 1;
-                            do {
-                                $urls = $provider->get_url_list($page, $subtype);
-                                if (empty($urls))
-                                    break;
-                                foreach ($urls as $entry) {
-                                    if (empty($entry['loc']))
-                                        continue;
-                                    $pid = url_to_postid($entry['loc']);
-                                    if ($pid) {
-                                        $ids[(int) $pid] = true;
-                                    }
-                                }
-                                $page++;
-                            } while (!empty($urls));
-                        }
-                    }
-                }
-            }
-
-            if (empty($ids)) {
-                if (!class_exists('WP_Query'))
-                    return array();
-                $q = new WP_Query(array(
-                    'post_type' => $post_types,
-                    'post_status' => 'publish',
-                    'posts_per_page' => -1,
-                    'fields' => 'ids',
-                    'no_found_rows' => true,
-                    'orderby' => 'ID',
-                    'order' => 'ASC',
-                ));
-                if (!is_wp_error($q)) {
-                    foreach ((array) $q->posts as $pid) {
-                        $ids[(int) $pid] = true;
-                    }
+            if (!class_exists('WP_Query'))
+                return array();
+            $q = new WP_Query(array(
+                'post_type' => $post_types,
+                'post_status' => 'publish',
+                'posts_per_page' => -1,
+                'fields' => 'ids',
+                'no_found_rows' => true,
+                'orderby' => 'ID',
+                'order' => 'ASC',
+            ));
+            if (!is_wp_error($q)) {
+                foreach ((array) $q->posts as $pid) {
+                    $ids[(int) $pid] = true;
                 }
             }
 
@@ -4707,6 +4669,7 @@ jQuery(function($){
             if (class_exists('WP_Query')) {
                 $q = new WP_Query(array('post_type' => get_post_types(array('public' => true), 'names'), 'post_status' => 'any', 'posts_per_page' => -1, 'fields' => 'ids', 'no_found_rows' => true));
                 if (!is_wp_error($q)) {
+                    update_postmeta_cache( (array) $q->posts );
                     foreach ($q->posts as $pid) {
                         $r = get_post_meta($pid, self::META_RULES, true);
                         if (!is_array($r))
