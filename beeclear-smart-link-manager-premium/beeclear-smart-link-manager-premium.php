@@ -1852,11 +1852,18 @@ JS;
             .beeclear-ilm-overview th{background:#f8fafc;font-weight:600;text-align:left}
             .beeclear-ilm-overview td{vertical-align:top}
             .beeclear-ilm-overview tr+tr td{border-top:1px solid #edf0f3}            
-            .beeclear-ilm-overview .col-phrases,.beeclear-ilm-overview .col-inbound{white-space:nowrap}
-            .beeclear-ilm-overview .col-sources,.beeclear-ilm-overview .col-targets{white-space:nowrap}            
+            .beeclear-ilm-overview .col-inbound,.beeclear-ilm-overview .col-priority{white-space:nowrap}
+            .beeclear-ilm-overview .col-sources,.beeclear-ilm-overview .col-targets{white-space:nowrap}
+            .beeclear-ilm-overview .col-phrases{min-width:120px}
+            .beeclear-phrase-tag{display:inline-block;background:#f0f0f1;border:1px solid #dcdcde;border-radius:4px;padding:2px 7px;margin:2px 3px 2px 0;font-size:12px;line-height:1.5;color:#1d2327;white-space:nowrap}
+            .beeclear-sort{cursor:pointer;user-select:none}
+            .beeclear-sort:hover{background:#eef1f5}
+            .beeclear-sort-icon{font-size:14px;vertical-align:middle;color:#999;margin-left:2px}
+            .beeclear-sort.asc .beeclear-sort-icon::before{content:"\f142"}
+            .beeclear-sort.desc .beeclear-sort-icon::before{content:"\f140"}
             @media (max-width:782px){
                 .beeclear-ilm-overview th,.beeclear-ilm-overview td{padding:10px 8px}
-                .beeclear-ilm-overview .col-phrases,.beeclear-ilm-overview .col-inbound,.beeclear-ilm-overview .col-sources,.beeclear-ilm-overview .col-targets{width:auto}
+                .beeclear-ilm-overview .col-phrases,.beeclear-ilm-overview .col-inbound,.beeclear-ilm-overview .col-sources,.beeclear-ilm-overview .col-targets,.beeclear-ilm-overview .col-priority{width:auto}
             }
             .beeclear-ilm-source-item{position:relative;}
             .beeclear-ilm-source-phrase{display:inline-flex;gap:4px;align-items:center;}
@@ -4291,6 +4298,7 @@ JS;
             foreach ( $rows as &$row ) {
                 $row['phrases'] = array_keys( $row['phrases'] );
                 $row['phrases_count'] = count( $row['phrases'] );
+                $row['phrase_texts'] = $row['phrases'];
             }
             unset($row);
             return array_values( $rows );
@@ -4311,10 +4319,14 @@ JS;
             $search_lower = ( function_exists( 'mb_strtolower' ) ? mb_strtolower( $search, 'UTF-8' ) : strtolower( $search ) );
             $phrases_per_target = array();
             $phrases_list = array();
+            $target_priorities = array();
             foreach ( $index as $r ) {
                 $t = (int) $r['target'];
                 $phrases_per_target[$t] = ($phrases_per_target[$t] ?? 0) + 1;
                 $phrases_list[$t][] = $r;
+                if ( ! isset( $target_priorities[$t] ) ) {
+                    $target_priorities[$t] = (int) ( $r['target_priority'] ?? 0 );
+                }
             }
             $rows = array();
             if ( $view === 'targets' ) {
@@ -4323,14 +4335,22 @@ JS;
                     return;
                 }
                 foreach ( $phrases_per_target as $tid => $cnt ) {
+                    $phrase_texts = array();
+                    foreach ( ( $phrases_list[$tid] ?? array() ) as $pr ) {
+                        if ( isset( $pr['phrase'] ) && trim( (string) $pr['phrase'] ) !== '' ) {
+                            $phrase_texts[] = trim( (string) $pr['phrase'] );
+                        }
+                    }
                     $rows[] = array(
-                        'id'            => $tid,
-                        'title'         => get_the_title( $tid ),
-                        'perma'         => get_permalink( $tid ),
-                        'edit'          => get_edit_post_link( $tid ),
-                        'phrases'       => $phrases_list[$tid] ?? array(),
-                        'phrases_count' => (int) $cnt,
-                        'inbound'       => ( isset( $map[$tid]['sources'] ) && is_array( $map[$tid]['sources'] ) ? count( $map[$tid]['sources'] ) : 0 ),
+                        'id'              => $tid,
+                        'title'           => get_the_title( $tid ),
+                        'perma'           => get_permalink( $tid ),
+                        'edit'            => get_edit_post_link( $tid ),
+                        'phrases'         => $phrases_list[$tid] ?? array(),
+                        'phrases_count'   => (int) $cnt,
+                        'phrase_texts'    => $phrase_texts,
+                        'target_priority' => ( $target_priorities[$tid] ?? 0 ),
+                        'inbound'         => ( isset( $map[$tid]['sources'] ) && is_array( $map[$tid]['sources'] ) ? count( $map[$tid]['sources'] ) : 0 ),
                     );
                 }
             } elseif ( $view === 'sources' ) {
@@ -4364,6 +4384,7 @@ JS;
                 $rows = array_values( $rows );
                 foreach ( $rows as &$row ) {
                     $row['phrases_count'] = count( $row['phrases'] );
+                    $row['phrase_texts'] = array_keys( $row['phrases'] );
                 }
                 unset($row);
                 if ( empty( $rows ) ) {
@@ -4501,12 +4522,18 @@ JS;
                 return;
             }
             echo '<div class="beeclear-ilm-overview-table-wrap">';
-            echo '<table id="beeclear-ilm-ext-table" class="widefat striped beeclear-ilm-overview"><thead><tr>';
+            echo '<table id="beeclear-ilm-ext-table" class="widefat striped beeclear-ilm-overview beeclear-ilm-sortable"><thead><tr>';
             $target_label = ( $view === 'targets' ? __( 'Target', 'beeclear-smart-link-manager-premium' ) : (( $view === 'sources' ? __( 'Source', 'beeclear-smart-link-manager-premium' ) : __( 'External target', 'beeclear-smart-link-manager-premium' ) )) );
-            echo '<th class="col-target">' . esc_html( $target_label ) . '</th>';
-            echo '<th class="col-phrases">' . esc_html__( '# phrases', 'beeclear-smart-link-manager-premium' ) . '</th>';
+            echo '<th class="col-target beeclear-sort" data-sort="string" data-col="0">' . esc_html( $target_label ) . ' <span class="beeclear-sort-icon dashicons dashicons-sort"></span></th>';
+            if ( $view === 'targets' ) {
+                echo '<th class="col-priority beeclear-sort" data-sort="num" data-col="1">' . esc_html__( 'Priority', 'beeclear-smart-link-manager-premium' ) . ' <span class="beeclear-sort-icon dashicons dashicons-sort"></span></th>';
+            }
+            $phrases_label = __( 'Phrases', 'beeclear-smart-link-manager-premium' );
+            $phrases_col_idx = ( $view === 'targets' ? 2 : 1 );
+            echo '<th class="col-phrases beeclear-sort" data-sort="num" data-col="' . esc_attr( $phrases_col_idx ) . '">' . esc_html( $phrases_label ) . ' <span class="beeclear-sort-icon dashicons dashicons-sort"></span></th>';
             $links_label = ( $view === 'targets' ? __( '# inbound links', 'beeclear-smart-link-manager-premium' ) : (( $view === 'sources' ? __( '# outbound links', 'beeclear-smart-link-manager-premium' ) : __( '# links', 'beeclear-smart-link-manager-premium' ) )) );
-            echo '<th class="col-inbound">' . esc_html( $links_label ) . '</th>';
+            $links_col_idx = ( $view === 'targets' ? 3 : 2 );
+            echo '<th class="col-inbound beeclear-sort" data-sort="num" data-col="' . esc_attr( $links_col_idx ) . '">' . esc_html( $links_label ) . ' <span class="beeclear-sort-icon dashicons dashicons-sort"></span></th>';
             $middle_label = ( $view === 'sources' ? __( 'Targets', 'beeclear-smart-link-manager-premium' ) : __( 'Sources', 'beeclear-smart-link-manager-premium' ) );
             echo '<th class="' . esc_attr( ( $view === 'sources' ? 'col-targets' : 'col-sources' ) ) . '">' . esc_html( $middle_label ) . '</th>';
             echo '</tr></thead><tbody>';
@@ -4517,12 +4544,25 @@ JS;
                 $entry_id_attr = esc_attr( (string) $row['id'] );
                 $btn = '<button type="button" class="button button-small beeclear-ilm-popup-btn" data-entry="' . esc_attr( $entry_id_attr ) . '" data-view="' . esc_attr( $view ) . '" data-title="' . esc_attr( $title ) . '">' . esc_html__( 'Show details', 'beeclear-smart-link-manager-premium' ) . '</button>';
                 echo '<tr>';
-                echo '<td class="col-target">' . (( $perma ? '<a href="' . esc_url( $perma ) . '" target="_blank" rel="noopener">' : '' )) . esc_html( $title ) . (( $perma ? '</a>' : '' ));
+                echo '<td class="col-target" data-sort-value="' . esc_attr( strtolower( $title ) ) . '">' . (( $perma ? '<a href="' . esc_url( $perma ) . '" target="_blank" rel="noopener">' : '' )) . esc_html( $title ) . (( $perma ? '</a>' : '' ));
                 if ( $edit ) {
                     echo ' <a href="' . esc_url( $edit ) . '" class="beeclear-ilm-edit" title="' . esc_attr__( 'Edit', 'beeclear-smart-link-manager-premium' ) . '"><span class="dashicons dashicons-edit"></span></a>';
                 }
                 echo '</td>';
-                echo '<td class="col-phrases">' . (int) $row['phrases_count'] . '</td>';
+                if ( $view === 'targets' ) {
+                    $tp = (int) ( $row['target_priority'] ?? 0 );
+                    echo '<td class="col-priority" data-sort-value="' . esc_attr( $tp ) . '">' . esc_html( $tp ) . '</td>';
+                }
+                $phrase_texts = ( isset( $row['phrase_texts'] ) ? (array) $row['phrase_texts'] : array() );
+                $phrases_html = '';
+                if ( ! empty( $phrase_texts ) ) {
+                    $phrases_parts = array();
+                    foreach ( $phrase_texts as $pt ) {
+                        $phrases_parts[] = '<span class="beeclear-phrase-tag">' . esc_html( $pt ) . '</span>';
+                    }
+                    $phrases_html = implode( ' ', $phrases_parts );
+                }
+                echo '<td class="col-phrases" data-sort-value="' . esc_attr( count( $phrase_texts ) ) . '">' . wp_kses_post( $phrases_html ) . '</td>';
                 if ( $view === 'targets' ) {
                     $link_count = (int) $row['inbound'];
                 } elseif ( $view === 'sources' ) {
@@ -4530,7 +4570,7 @@ JS;
                 } else {
                     $link_count = (int) ($row['link_count'] ?? 0);
                 }
-                echo '<td class="col-inbound">' . esc_html( $link_count ) . '</td>';
+                echo '<td class="col-inbound" data-sort-value="' . esc_attr( $link_count ) . '">' . esc_html( $link_count ) . '</td>';
                 $col_class = ( $view === 'sources' ? 'col-targets' : 'col-sources' );
                 echo '<td class="' . esc_attr( $col_class ) . '">' . wp_kses_post( $btn ) . '</td>';
                 echo '</tr>';
@@ -4654,6 +4694,25 @@ JS;
             });
             $pagination.on("click","button[data-page]",function(){
                 loadPopupPage(parseInt($(this).data("page"),10));
+            });
+
+            // Column sorting for overview table.
+            var $table=$("#beeclear-ilm-ext-table");
+            $table.on("click","th.beeclear-sort",function(){
+                var $th=$(this), col=parseInt($th.data("col"),10), type=$th.data("sort"),
+                    asc=!$th.hasClass("asc");
+                $table.find("th.beeclear-sort").removeClass("asc desc");
+                $th.addClass(asc?"asc":"desc");
+                var $tbody=$table.find("tbody"), $rows=$tbody.find("tr").get();
+                $rows.sort(function(a,b){
+                    var $ca=$(a).find("td").eq(col), $cb=$(b).find("td").eq(col);
+                    var va=$ca.attr("data-sort-value"), vb=$cb.attr("data-sort-value");
+                    if(typeof va==="undefined") va=$ca.text().trim().toLowerCase();
+                    if(typeof vb==="undefined") vb=$cb.text().trim().toLowerCase();
+                    if(type==="num"){va=parseFloat(va)||0;vb=parseFloat(vb)||0;return asc?va-vb:vb-va;}
+                    return asc?va.localeCompare(vb):vb.localeCompare(va);
+                });
+                $.each($rows,function(i,row){$tbody.append(row);});
             });
         });
         </script>';
