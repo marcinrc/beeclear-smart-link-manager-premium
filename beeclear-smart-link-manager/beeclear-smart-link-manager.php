@@ -2315,6 +2315,7 @@ jQuery(function($){
                 $total     = isset($state['total']) ? (int) $state['total'] : 0;
                 $percent   = $total ? min(100, round(($processed / $total) * 100)) : 0;
 
+                /* translators: %d: scan progress percentage */
                 $label = esc_html(sprintf(__('Scan %d%%', 'beeclear-smart-link-manager'), $percent));
 
                 $wp_admin_bar->add_node(array(
