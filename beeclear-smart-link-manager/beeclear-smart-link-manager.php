@@ -2220,6 +2220,7 @@ jQuery(function($){
             }
 
             $index = array();
+            update_postmeta_cache( (array) $q->posts );
             foreach ((array) $q->posts as $pid) {
                 $rules = get_post_meta($pid, self::META_RULES, true);
                 if (!is_array($rules) || empty($rules))
