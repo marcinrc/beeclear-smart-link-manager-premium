@@ -4116,6 +4116,10 @@ jQuery(function($){
             .beeclear-ilm-popup-body table{width:100%;border-collapse:collapse}
             .beeclear-ilm-popup-body th,.beeclear-ilm-popup-body td{padding:6px 10px;border-bottom:1px solid #eee;text-align:left;vertical-align:top;font-size:13px}
             .beeclear-ilm-popup-body th{font-weight:600;white-space:nowrap}
+            .beeclear-ilm-popup-body a{text-decoration:none}
+            .beeclear-ilm-popup-body a:hover{text-decoration:underline}
+            .beeclear-ilm-popup-body .dashicons{font-size:14px;width:14px;height:14px;text-decoration:none}
+            .beeclear-ilm-popup-body a .dashicons{text-decoration:none}
             .beeclear-ilm-popup-pagination{padding:10px 20px;border-top:1px solid #ddd;text-align:center;display:flex;gap:6px;justify-content:center;flex-wrap:wrap}
             .beeclear-ilm-popup-pagination button{min-width:32px;padding:4px 10px;border:1px solid #ccc;background:#f7f7f7;cursor:pointer;border-radius:3px;font-size:13px}
             .beeclear-ilm-popup-pagination button.current{background:#2271b1;color:#fff;border-color:#2271b1}
@@ -4260,9 +4264,7 @@ jQuery(function($){
                 echo '<table><thead><tr>';
                 echo '<th>' . esc_html__('Phrase', 'beeclear-smart-link-manager') . '</th>';
                 echo '<th>' . esc_html($page_col_label) . '</th>';
-                echo '<th>' . esc_html__('Context', 'beeclear-smart-link-manager') . '</th>';
                 echo '</tr></thead><tbody>';
-                $popup_idx = 0;
                 foreach ($paged as $item) {
                     echo '<tr>';
                     echo '<td><strong>' . esc_html($item['phrase']) . '</strong></td>';
@@ -4273,27 +4275,7 @@ jQuery(function($){
                         echo esc_html($item['page_title']);
                     }
                     if (!empty($item['edit_url'])) {
-                        echo ' <a href="' . esc_url($item['edit_url']) . '" title="' . esc_attr__('Edit', 'beeclear-smart-link-manager') . '"><span class="dashicons dashicons-edit" style="font-size:14px;width:14px;height:14px"></span></a>';
-                    }
-                    echo '</td>';
-                    echo '<td>';
-                    if (!empty($item['context_html'])) {
-                        $ctx_popup_id = 'beeclear-ilm-pctx-' . $page . '-' . $popup_idx;
-                        $popup_idx++;
-                        $tag_label_html = '';
-                        if (!empty($item['context_tag'])) {
-                            /* translators: %s: HTML tag name where the phrase was found. */
-                            $tag_label_html = '<div class="beeclear-ilm-context-tag">' . sprintf(esc_html__('Element: %s', 'beeclear-smart-link-manager'), esc_html($item['context_tag'])) . '</div>';
-                        }
-                        echo '<button type="button" class="button-link beeclear-ilm-context-btn" data-target="' . esc_attr($ctx_popup_id) . '" aria-expanded="false" aria-controls="' . esc_attr($ctx_popup_id) . '" title="' . esc_attr__('Show source element', 'beeclear-smart-link-manager') . '">';
-                        echo '<span class="dashicons dashicons-format-chat" aria-hidden="true"></span>';
-                        echo '<span class="screen-reader-text">' . esc_html__('Show source element', 'beeclear-smart-link-manager') . '</span>';
-                        echo '</button>';
-                        echo '<div id="' . esc_attr($ctx_popup_id) . '" class="beeclear-ilm-context-popup" hidden>';
-                        echo '<div class="beeclear-ilm-context-fragment">' . $tag_label_html . '<div class="beeclear-ilm-context-html">' . wp_kses_post($item['context_html']) . '</div></div>';
-                        echo '</div>';
-                    } else {
-                        echo '<em>' . esc_html__('—', 'beeclear-smart-link-manager') . '</em>';
+                        echo ' <a href="' . esc_url($item['edit_url']) . '" title="' . esc_attr__('Edit', 'beeclear-smart-link-manager') . '"><span class="dashicons dashicons-edit"></span></a>';
                     }
                     echo '</td>';
                     echo '</tr>';
