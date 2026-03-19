@@ -3012,8 +3012,12 @@ jQuery(function($){
 
         private function build_pattern($phrase, $is_regex, $is_case)
         {
+            static $cache = array();
             if ($phrase === '')
                 return null;
+            $cache_key = $phrase . '|' . ($is_regex ? '1' : '0') . '|' . ($is_case ? '1' : '0');
+            if (array_key_exists($cache_key, $cache))
+                return $cache[$cache_key];
             $boundary = '[\p{L}\p{N}_]';
             if ($is_regex) {
                 $mod = $is_case ? 'u' : 'iu';
@@ -3022,19 +3026,26 @@ jQuery(function($){
                 } catch ( \Throwable $e ) {
                     $pattern_valid = false;
                 }
-                if ( ! $pattern_valid )
+                if ( ! $pattern_valid ) {
+                    $cache[$cache_key] = null;
                     return null;
-                return '/' . $phrase . '/' . $mod;
+                }
+                $cache[$cache_key] = '/' . $phrase . '/' . $mod;
+                return $cache[$cache_key];
             } else {
                 if ($this->contains_tokens($phrase)) {
                     $compiled = $this->compile_token_phrase_pattern($phrase, $is_case);
-                    if ($compiled)
+                    if ($compiled) {
+                        $cache[$cache_key] = $compiled;
                         return $compiled;
+                    }
                 }
                 $q = preg_quote($phrase, '/');
-                return $is_case
+                $result = $is_case
                     ? '/(?<!' . $boundary . ')(' . $q . ')(?!' . $boundary . ')/u'
                     : '/(?<!' . $boundary . ')(' . $q . ')(?!' . $boundary . ')/iu';
+                $cache[$cache_key] = $result;
+                return $result;
             }
         }
 
