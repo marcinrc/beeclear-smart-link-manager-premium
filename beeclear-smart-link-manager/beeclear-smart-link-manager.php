@@ -124,6 +124,7 @@ if (!class_exists('BeeClear_ILM', false)):
             add_action('wp_ajax_beeclear_ilm_step_overview_scan', array($this, 'ajax_scan_status'));
             add_action('wp_ajax_beeclear_ilm_scan_status', array($this, 'ajax_scan_status'));
             add_action('wp_ajax_beeclear_ilm_dismiss_promo', array($this, 'ajax_dismiss_promo'));
+            add_action('wp_ajax_beeclear_ilm_fetch_logs', array($this, 'ajax_fetch_logs'));
 
             add_action('admin_bar_menu', array($this, 'admin_bar_scan_progress'), 999);
 
@@ -913,7 +914,7 @@ if (!class_exists('BeeClear_ILM', false)):
                 }
             }
 
-            $completed_at = current_time('timestamp');
+            $completed_at = time();
 
             return array(
                 'completed_at' => (int) $completed_at,
@@ -944,7 +945,7 @@ if (!class_exists('BeeClear_ILM', false)):
         private function log_activity($message)
         {
             $entry = array(
-                'time' => current_time('timestamp'),
+                'time' => time(),
                 'message' => (string) $message,
             );
 
@@ -1731,6 +1732,28 @@ jQuery(function($){
                 .beeclear-ilm-overview th,.beeclear-ilm-overview td{white-space:normal;}
                 .beeclear-ilm-source-item{white-space:normal;}
             }
+
+            /* Popup overlay */
+            .beeclear-ilm-popup-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.55);z-index:100100;display:flex;align-items:center;justify-content:center}
+            .beeclear-ilm-popup-overlay[hidden]{display:none}
+            .beeclear-ilm-popup-modal{background:#fff;border-radius:8px;width:90%;max-width:780px;max-height:85vh;display:flex;flex-direction:column;box-shadow:0 8px 32px rgba(0,0,0,.25)}
+            .beeclear-ilm-popup-header{display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid #ddd}
+            .beeclear-ilm-popup-header h3{margin:0;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:calc(100% - 40px)}
+            .beeclear-ilm-popup-close{background:none;border:none;font-size:24px;cursor:pointer;padding:0 4px;line-height:1;color:#666}
+            .beeclear-ilm-popup-close:hover{color:#000}
+            .beeclear-ilm-popup-body{overflow-y:auto;padding:16px 20px;flex:1}
+            .beeclear-ilm-popup-body table{width:100%;border-collapse:collapse}
+            .beeclear-ilm-popup-body th,.beeclear-ilm-popup-body td{padding:6px 10px;border-bottom:1px solid #eee;text-align:left;vertical-align:top;font-size:13px}
+            .beeclear-ilm-popup-body th{font-weight:600;white-space:nowrap}
+            .beeclear-ilm-popup-body a{text-decoration:none}
+            .beeclear-ilm-popup-body a:hover{text-decoration:underline}
+            .beeclear-ilm-popup-body .dashicons{font-size:14px;width:14px;height:14px;text-decoration:none}
+            .beeclear-ilm-popup-body a .dashicons{text-decoration:none}
+            .beeclear-ilm-popup-pagination{padding:10px 20px;border-top:1px solid #ddd;text-align:center;display:flex;gap:6px;justify-content:center;flex-wrap:wrap}
+            .beeclear-ilm-popup-pagination button{min-width:32px;padding:4px 10px;border:1px solid #ccc;background:#f7f7f7;cursor:pointer;border-radius:3px;font-size:13px}
+            .beeclear-ilm-popup-pagination button.current{background:#2271b1;color:#fff;border-color:#2271b1}
+            .beeclear-ilm-popup-pagination button:hover:not(.current){background:#e5e5e5}
+            .beeclear-ilm-popup-pagination .beeclear-popup-page-info{align-self:center;font-size:12px;color:#666}
         ';
         }
 
@@ -2123,7 +2146,7 @@ jQuery(function($){
                 'ids' => $ids,
                 'processed' => 0,
                 'total' => count($ids),
-                'started_at' => current_time('timestamp'),
+                'started_at' => time(),
             );
             update_option(self::OPT_OVERVIEW_SCAN, $state, false);
 
@@ -4105,28 +4128,6 @@ jQuery(function($){
             echo '<div id="beeclear-ilm-popup-pagination" class="beeclear-ilm-popup-pagination"></div>';
             echo '</div>';
             echo '</div>';
-            echo '<style>
-            .beeclear-ilm-popup-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.55);z-index:100100;display:flex;align-items:center;justify-content:center}
-            .beeclear-ilm-popup-overlay[hidden]{display:none}
-            .beeclear-ilm-popup-modal{background:#fff;border-radius:8px;width:90%;max-width:780px;max-height:85vh;display:flex;flex-direction:column;box-shadow:0 8px 32px rgba(0,0,0,.25)}
-            .beeclear-ilm-popup-header{display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid #ddd}
-            .beeclear-ilm-popup-header h3{margin:0;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:calc(100% - 40px)}
-            .beeclear-ilm-popup-close{background:none;border:none;font-size:24px;cursor:pointer;padding:0 4px;line-height:1;color:#666}
-            .beeclear-ilm-popup-close:hover{color:#000}
-            .beeclear-ilm-popup-body{overflow-y:auto;padding:16px 20px;flex:1}
-            .beeclear-ilm-popup-body table{width:100%;border-collapse:collapse}
-            .beeclear-ilm-popup-body th,.beeclear-ilm-popup-body td{padding:6px 10px;border-bottom:1px solid #eee;text-align:left;vertical-align:top;font-size:13px}
-            .beeclear-ilm-popup-body th{font-weight:600;white-space:nowrap}
-            .beeclear-ilm-popup-body a{text-decoration:none}
-            .beeclear-ilm-popup-body a:hover{text-decoration:underline}
-            .beeclear-ilm-popup-body .dashicons{font-size:14px;width:14px;height:14px;text-decoration:none}
-            .beeclear-ilm-popup-body a .dashicons{text-decoration:none}
-            .beeclear-ilm-popup-pagination{padding:10px 20px;border-top:1px solid #ddd;text-align:center;display:flex;gap:6px;justify-content:center;flex-wrap:wrap}
-            .beeclear-ilm-popup-pagination button{min-width:32px;padding:4px 10px;border:1px solid #ccc;background:#f7f7f7;cursor:pointer;border-radius:3px;font-size:13px}
-            .beeclear-ilm-popup-pagination button.current{background:#2271b1;color:#fff;border-color:#2271b1}
-            .beeclear-ilm-popup-pagination button:hover:not(.current){background:#e5e5e5}
-            .beeclear-ilm-popup-pagination .beeclear-popup-page-info{align-self:center;font-size:12px;color:#666}
-            </style>';
             $popup_script = 'jQuery(function($){'
                 . 'var popupNonce="' . esc_js(wp_create_nonce(self::NONCE)) . '";'
                 . 'var $overlay=$("#beeclear-ilm-popup-overlay"),$title=$("#beeclear-ilm-popup-title"),$body=$("#beeclear-ilm-popup-body"),$pagination=$("#beeclear-ilm-popup-pagination"),currentEntry=null,currentView=null;'
@@ -4450,7 +4451,7 @@ jQuery(function($){
                 'ids' => $ids,
                 'processed' => 0,
                 'total' => count($ids),
-                'started_at' => current_time('timestamp'),
+                'started_at' => time(),
             );
             update_option(self::OPT_OVERVIEW_SCAN, $state, false);
 
@@ -4649,7 +4650,6 @@ jQuery(function($){
             echo '<p class="description">' . esc_html__('Define phrases (or regex) that should be linked to external URLs. Control case-sensitivity (disabled if regex), rel/title/aria/class, per-page limits, and restrict rules to specific post types.', 'beeclear-smart-link-manager') . '</p>';
             echo wp_kses_post($this->render_token_tips_html());
             echo '</div>';
-            echo '</details>';
             echo '<form method="post"><table class="widefat striped" id="beeclear-ilm-ext-table"><thead><tr>' .
                 '<th>' . esc_html__('Destination & Phrase / Flags', 'beeclear-smart-link-manager') . '</th>' .
                 '<th>' . esc_html__('Attributes', 'beeclear-smart-link-manager') . '</th>' .
