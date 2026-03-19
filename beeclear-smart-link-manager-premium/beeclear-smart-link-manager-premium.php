@@ -1883,6 +1883,29 @@ JS;
                 .beeclear-ilm-overview th,.beeclear-ilm-overview td{white-space:normal;}
                 .beeclear-ilm-source-item{white-space:normal;}
             }
+
+            /* Popup overlay */
+            .beeclear-ilm-popup-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.55);z-index:100100;display:flex;align-items:center;justify-content:center}
+            .beeclear-ilm-popup-overlay[hidden]{display:none}
+            .beeclear-ilm-popup-modal{background:#fff;border-radius:8px;width:90%;max-width:780px;max-height:85vh;display:flex;flex-direction:column;box-shadow:0 8px 32px rgba(0,0,0,.25)}
+            .beeclear-ilm-popup-header{display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid #ddd}
+            .beeclear-ilm-popup-header h3{margin:0;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:calc(100% - 40px)}
+            .beeclear-ilm-popup-close{background:none;border:none;font-size:24px;cursor:pointer;padding:0 4px;line-height:1;color:#666}
+            .beeclear-ilm-popup-close:hover{color:#000}
+            .beeclear-ilm-popup-body{overflow-y:auto;padding:16px 20px;flex:1}
+            .beeclear-ilm-popup-body table{width:100%;border-collapse:collapse}
+            .beeclear-ilm-popup-body th,.beeclear-ilm-popup-body td{padding:6px 10px;border-bottom:1px solid #eee;text-align:left;vertical-align:top;font-size:13px}
+            .beeclear-ilm-popup-body th{font-weight:600;white-space:nowrap}
+            .beeclear-ilm-popup-body a{text-decoration:none}
+            .beeclear-ilm-popup-body a:hover{text-decoration:underline}
+            .beeclear-ilm-popup-body .dashicons{font-size:14px;width:14px;height:14px;text-decoration:none}
+            .beeclear-ilm-popup-body a .dashicons{text-decoration:none}
+            .beeclear-ilm-popup-body .beeclear-ctx-snippet{color:#666;font-size:12px;max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+            .beeclear-ilm-popup-pagination{padding:10px 20px;border-top:1px solid #ddd;text-align:center;display:flex;gap:6px;justify-content:center;flex-wrap:wrap}
+            .beeclear-ilm-popup-pagination button{min-width:32px;padding:4px 10px;border:1px solid #ccc;background:#f7f7f7;cursor:pointer;border-radius:3px;font-size:13px}
+            .beeclear-ilm-popup-pagination button.current{background:#2271b1;color:#fff;border-color:#2271b1}
+            .beeclear-ilm-popup-pagination button:hover:not(.current){background:#e5e5e5}
+            .beeclear-ilm-popup-pagination .beeclear-popup-page-info{align-self:center;font-size:12px;color:#666}
         ';
         }
 
@@ -2562,13 +2585,14 @@ JS;
                 $total     = isset( $state['total'] ) ? (int) $state['total'] : 0;
                 $percent   = $total ? min( 100, round( ( $processed / $total ) * 100 ) ) : 0;
 
+                /* translators: %d: scan progress percentage */
                 $label = esc_html( sprintf( __( 'Scan %d%%', 'beeclear-smart-link-manager-premium' ), $percent ) );
 
                 $wp_admin_bar->add_node( array(
                     'id'    => 'beeclear-ilm-scan',
                     'title' => '<span class="beeclear-adminbar-scan-label">' . $label . '</span>'
                              . '<span class="beeclear-adminbar-scan-track" style="display:inline-block;width:60px;height:10px;background:#455a64;border-radius:3px;margin-left:6px;vertical-align:middle;overflow:hidden;">'
-                             . '<span class="beeclear-adminbar-scan-bar" style="display:block;height:100%;width:' . $percent . '%;background:#76c442;border-radius:3px;transition:width .3s;"></span>'
+                             . '<span class="beeclear-adminbar-scan-bar" style="display:block;height:100%;width:' . esc_attr( $percent ) . '%;background:#76c442;border-radius:3px;transition:width .3s;"></span>'
                              . '</span>',
                     'href'  => esc_url( admin_url( 'admin.php?page=beeclear-ilm' ) ),
                     'meta'  => array( 'class' => 'beeclear-ilm-scan-node' ),
@@ -2589,7 +2613,7 @@ JS;
                     'id'    => 'beeclear-ilm-rebuild',
                     'title' => '<span class="beeclear-adminbar-rebuild-label">' . $rb_label . '</span>'
                              . '<span class="beeclear-adminbar-rebuild-track" style="display:inline-block;width:60px;height:10px;background:#455a64;border-radius:3px;margin-left:6px;vertical-align:middle;overflow:hidden;">'
-                             . '<span class="beeclear-adminbar-rebuild-bar" style="display:block;height:100%;width:' . $rb_percent . '%;background:#2196f3;border-radius:3px;transition:width .3s;"></span>'
+                             . '<span class="beeclear-adminbar-rebuild-bar" style="display:block;height:100%;width:' . esc_attr( $rb_percent ) . '%;background:#2196f3;border-radius:3px;transition:width .3s;"></span>'
                              . '</span>',
                     'href'  => esc_url( admin_url( 'admin.php?page=beeclear-ilm' ) ),
                     'meta'  => array( 'class' => 'beeclear-ilm-rebuild-node' ),
@@ -4596,130 +4620,33 @@ JS;
             echo '<div id="beeclear-ilm-popup-pagination" class="beeclear-ilm-popup-pagination"></div>';
             echo '</div>';
             echo '</div>';
-            echo '<style>
-            .beeclear-ilm-popup-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.55);z-index:100100;display:flex;align-items:center;justify-content:center}
-            .beeclear-ilm-popup-overlay[hidden]{display:none}
-            .beeclear-ilm-popup-modal{background:#fff;border-radius:8px;width:90%;max-width:780px;max-height:85vh;display:flex;flex-direction:column;box-shadow:0 8px 32px rgba(0,0,0,.25)}
-            .beeclear-ilm-popup-header{display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid #ddd}
-            .beeclear-ilm-popup-header h3{margin:0;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:calc(100% - 40px)}
-            .beeclear-ilm-popup-close{background:none;border:none;font-size:24px;cursor:pointer;padding:0 4px;line-height:1;color:#666}
-            .beeclear-ilm-popup-close:hover{color:#000}
-            .beeclear-ilm-popup-body{overflow-y:auto;padding:16px 20px;flex:1}
-            .beeclear-ilm-popup-body table{width:100%;border-collapse:collapse}
-            .beeclear-ilm-popup-body th,.beeclear-ilm-popup-body td{padding:6px 10px;border-bottom:1px solid #eee;text-align:left;vertical-align:top;font-size:13px}
-            .beeclear-ilm-popup-body th{font-weight:600;white-space:nowrap}
-            .beeclear-ilm-popup-body a{text-decoration:none}
-            .beeclear-ilm-popup-body a:hover{text-decoration:underline}
-            .beeclear-ilm-popup-body .dashicons{font-size:14px;width:14px;height:14px;text-decoration:none}
-            .beeclear-ilm-popup-body a .dashicons{text-decoration:none}
-            .beeclear-ilm-popup-body .beeclear-ctx-snippet{color:#666;font-size:12px;max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-            .beeclear-ilm-popup-pagination{padding:10px 20px;border-top:1px solid #ddd;text-align:center;display:flex;gap:6px;justify-content:center;flex-wrap:wrap}
-            .beeclear-ilm-popup-pagination button{min-width:32px;padding:4px 10px;border:1px solid #ccc;background:#f7f7f7;cursor:pointer;border-radius:3px;font-size:13px}
-            .beeclear-ilm-popup-pagination button.current{background:#2271b1;color:#fff;border-color:#2271b1}
-            .beeclear-ilm-popup-pagination button:hover:not(.current){background:#e5e5e5}
-            .beeclear-ilm-popup-pagination .beeclear-popup-page-info{align-self:center;font-size:12px;color:#666}
-            </style>';
-            echo '<script>
-        jQuery(function($){
-            var popupNonce="' . esc_js( wp_create_nonce( self::NONCE ) ) . '";
-            var $overlay=$("#beeclear-ilm-popup-overlay"),
-                $title=$("#beeclear-ilm-popup-title"),
-                $body=$("#beeclear-ilm-popup-body"),
-                $pagination=$("#beeclear-ilm-popup-pagination"),
-                currentEntry=null, currentView=null;
-
-            function openPopup(id,view,title,page){
-                currentEntry=id; currentView=view;
-                $title.text(title);
-                $body.html("<p>' . esc_js( __( 'Loading…', 'beeclear-smart-link-manager-premium' ) ) . '</p>");
-                $pagination.empty();
-                $overlay.removeAttr("hidden");
-                loadPopupPage(page||1);
+            $popup_script = 'jQuery(function($){'
+                . 'var popupNonce="' . esc_js( wp_create_nonce( self::NONCE ) ) . '";'
+                . 'var $overlay=$("#beeclear-ilm-popup-overlay"),$title=$("#beeclear-ilm-popup-title"),$body=$("#beeclear-ilm-popup-body"),$pagination=$("#beeclear-ilm-popup-pagination"),currentEntry=null,currentView=null;'
+                . 'function openPopup(id,view,title,page){currentEntry=id;currentView=view;$title.text(title);$body.html("<p>' . esc_js( __( 'Loading…', 'beeclear-smart-link-manager-premium' ) ) . '</p>");$pagination.empty();$overlay.removeAttr("hidden");loadPopupPage(page||1);}'
+                . 'function closePopup(){$overlay.attr("hidden","hidden");$body.empty();$pagination.empty();currentEntry=null;currentView=null;}'
+                . 'function loadPopupPage(page){$.post(ajaxurl,{action:"beeclear_ilm_expand_sources_paginated",id:currentEntry,view:currentView,popup_page:page,_ajax_nonce:popupNonce},function(resp){if(!resp||!resp.success){$body.html("<p>' . esc_js( __( 'Error loading data.', 'beeclear-smart-link-manager-premium' ) ) . '</p>");return;}$body.html(resp.data.html);renderPagination(resp.data.page,resp.data.total_pages,resp.data.total_items);}).fail(function(){$body.html("<p>' . esc_js( __( 'Request failed.', 'beeclear-smart-link-manager-premium' ) ) . '</p>");});}'
+                . 'function renderPagination(page,totalPages,totalItems){$pagination.empty();if(totalPages<=1){$pagination.append("<span class=\\"beeclear-popup-page-info\\">"+totalItems+" ' . esc_js( __( 'items', 'beeclear-smart-link-manager-premium' ) ) . '</span>");return;}'
+                . 'var info=$("<span>",{class:"beeclear-popup-page-info",text:page+"/"+totalPages+" ("+totalItems+" ' . esc_js( __( 'items', 'beeclear-smart-link-manager-premium' ) ) . ')"});'
+                . 'if(page>1){$pagination.append($("<button>",{text:"«","data-page":1}));$pagination.append($("<button>",{text:"‹","data-page":page-1}));}'
+                . 'var startP=Math.max(1,page-2),endP=Math.min(totalPages,page+2);'
+                . 'for(var i=startP;i<=endP;i++){var $btn=$("<button>",{text:i,"data-page":i});if(i===page)$btn.addClass("current");$pagination.append($btn);}'
+                . 'if(page<totalPages){$pagination.append($("<button>",{text:"›","data-page":page+1}));$pagination.append($("<button>",{text:"»","data-page":totalPages}));}'
+                . '$pagination.append(info);}'
+                . '$(document).on("click",".beeclear-ilm-popup-btn",function(){var $b=$(this);openPopup($b.data("entry"),$b.data("view"),$b.data("title"),1);});'
+                . '$overlay.on("click",".beeclear-ilm-popup-close",closePopup);'
+                . '$overlay.on("click",function(e){if(e.target===$overlay[0]&&!$(".beeclear-ilm-context-popup:not([hidden])").length)closePopup();});'
+                . '$(document).on("keydown",function(e){if(e.key==="Escape"){if($(".beeclear-ilm-context-popup:not([hidden])").length)return;closePopup();}});'
+                . '$pagination.on("click","button[data-page]",function(){loadPopupPage(parseInt($(this).data("page"),10));});'
+                . 'var $table=$("#beeclear-ilm-ext-table");'
+                . '$table.on("click","th.beeclear-sort",function(){var $th=$(this),col=parseInt($th.data("col"),10),type=$th.data("sort"),asc=!$th.hasClass("asc");$table.find("th.beeclear-sort").removeClass("asc desc");$th.addClass(asc?"asc":"desc");var $tbody=$table.find("tbody"),$rows=$tbody.find("tr").get();$rows.sort(function(a,b){var $ca=$(a).find("td").eq(col),$cb=$(b).find("td").eq(col);var va=$ca.attr("data-sort-value"),vb=$cb.attr("data-sort-value");if(typeof va==="undefined")va=$ca.text().trim().toLowerCase();if(typeof vb==="undefined")vb=$cb.text().trim().toLowerCase();if(type==="num"){va=parseFloat(va)||0;vb=parseFloat(vb)||0;return asc?va-vb:vb-va;}return asc?va.localeCompare(vb):vb.localeCompare(va);});$.each($rows,function(i,row){$tbody.append(row);});});'
+                . '});';
+            $h = 'beeclear-ilm-admin-runtime';
+            if ( ! wp_script_is( $h, 'registered' ) ) {
+                wp_register_script( $h, false, array( 'jquery' ), self::VERSION, true );
             }
-
-            function closePopup(){
-                $overlay.attr("hidden","hidden");
-                $body.empty(); $pagination.empty();
-                currentEntry=null; currentView=null;
-            }
-
-            function loadPopupPage(page){
-                $.post(ajaxurl,{
-                    action:"beeclear_ilm_expand_sources_paginated",
-                    id:currentEntry, view:currentView, popup_page:page,
-                    _ajax_nonce:popupNonce
-                },function(resp){
-                    if(!resp||!resp.success){
-                        $body.html("<p>' . esc_js( __( 'Error loading data.', 'beeclear-smart-link-manager-premium' ) ) . '</p>");
-                        return;
-                    }
-                    $body.html(resp.data.html);
-                    renderPagination(resp.data.page,resp.data.total_pages,resp.data.total_items);
-                }).fail(function(){
-                    $body.html("<p>' . esc_js( __( 'Request failed.', 'beeclear-smart-link-manager-premium' ) ) . '</p>");
-                });
-            }
-
-            function renderPagination(page,totalPages,totalItems){
-                $pagination.empty();
-                if(totalPages<=1){ $pagination.append("<span class=\"beeclear-popup-page-info\">"+totalItems+" ' . esc_js( __( 'items', 'beeclear-smart-link-manager-premium' ) ) . '</span>"); return; }
-                var info=$("<span>",{class:"beeclear-popup-page-info",text:page+"/"+totalPages+" ("+totalItems+" ' . esc_js( __( 'items', 'beeclear-smart-link-manager-premium' ) ) . ')"});
-                if(page>1){
-                    $pagination.append($("<button>",{text:"«","data-page":1}));
-                    $pagination.append($("<button>",{text:"‹","data-page":page-1}));
-                }
-                var startP=Math.max(1,page-2), endP=Math.min(totalPages,page+2);
-                for(var i=startP;i<=endP;i++){
-                    var $btn=$("<button>",{text:i,"data-page":i});
-                    if(i===page) $btn.addClass("current");
-                    $pagination.append($btn);
-                }
-                if(page<totalPages){
-                    $pagination.append($("<button>",{text:"›","data-page":page+1}));
-                    $pagination.append($("<button>",{text:"»","data-page":totalPages}));
-                }
-                $pagination.append(info);
-            }
-
-            $(document).on("click",".beeclear-ilm-popup-btn",function(){
-                var $b=$(this);
-                openPopup($b.data("entry"),$b.data("view"),$b.data("title"),1);
-            });
-            $overlay.on("click",".beeclear-ilm-popup-close",closePopup);
-            $overlay.on("click",function(e){
-                if(e.target===$overlay[0] && !$(".beeclear-ilm-context-popup:not([hidden])").length) closePopup();
-            });
-            $(document).on("keydown",function(e){
-                if(e.key==="Escape"){
-                    // If a context popup is open, let that handler close it first.
-                    if($(".beeclear-ilm-context-popup:not([hidden])").length) return;
-                    closePopup();
-                }
-            });
-            $pagination.on("click","button[data-page]",function(){
-                loadPopupPage(parseInt($(this).data("page"),10));
-            });
-
-            // Column sorting for overview table.
-            var $table=$("#beeclear-ilm-ext-table");
-            $table.on("click","th.beeclear-sort",function(){
-                var $th=$(this), col=parseInt($th.data("col"),10), type=$th.data("sort"),
-                    asc=!$th.hasClass("asc");
-                $table.find("th.beeclear-sort").removeClass("asc desc");
-                $th.addClass(asc?"asc":"desc");
-                var $tbody=$table.find("tbody"), $rows=$tbody.find("tr").get();
-                $rows.sort(function(a,b){
-                    var $ca=$(a).find("td").eq(col), $cb=$(b).find("td").eq(col);
-                    var va=$ca.attr("data-sort-value"), vb=$cb.attr("data-sort-value");
-                    if(typeof va==="undefined") va=$ca.text().trim().toLowerCase();
-                    if(typeof vb==="undefined") vb=$cb.text().trim().toLowerCase();
-                    if(type==="num"){va=parseFloat(va)||0;vb=parseFloat(vb)||0;return asc?va-vb:vb-va;}
-                    return asc?va.localeCompare(vb):vb.localeCompare(va);
-                });
-                $.each($rows,function(i,row){$tbody.append(row);});
-            });
-        });
-        </script>';
+            wp_enqueue_script( $h );
+            wp_add_inline_script( $h, $popup_script, 'after' );
         }
 
         public function ajax_expand_sources() {
@@ -5404,7 +5331,6 @@ JS;
             echo '<p class="description">' . esc_html__( 'Define phrases (or regex) that should be linked to external URLs. Control case-sensitivity (disabled if regex), rel/title/aria/class, per-page limits, and restrict rules to specific post types.', 'beeclear-smart-link-manager-premium' ) . '</p>';
             echo wp_kses_post( $this->render_token_tips_html() );
             echo '</div>';
-            echo '</details>';
             echo '<form method="post"><table class="widefat striped" id="beeclear-ilm-ext-table"><thead><tr>' . '<th>' . esc_html__( 'Destination & Phrase / Flags', 'beeclear-smart-link-manager-premium' ) . '</th>' . '<th>' . esc_html__( 'Attributes', 'beeclear-smart-link-manager-premium' ) . '</th>' . '<th>' . esc_html__( 'Post types / Exclusions', 'beeclear-smart-link-manager-premium' ) . '</th>' . '<th>' . esc_html__( 'Actions', 'beeclear-smart-link-manager-premium' ) . '</th>' . '</tr></thead><tbody>';
             $i = 0;
             foreach ( $rules as $r ) {
@@ -5705,7 +5631,7 @@ JS;
                                 $preview_items[] = esc_html( $ph ) . (( $badge ? ' <span style="opacity:.6">[' . esc_html( $badge ) . ']</span>' : '' ));
                             }
                             echo '<strong>' . intval( $count ) . '</strong>';
-                            echo '<div\\1>' . wp_kses_post( implode( ', ', $preview_items ) . (( $count > 3 ? '…' : '' )) ) . '</div>';
+                            echo '<div>' . wp_kses_post( implode( ', ', $preview_items ) . (( $count > 3 ? '…' : '' )) ) . '</div>';
                         }
                         if ( !empty( get_post_meta( $post_id, self::META_NO_OUT, true ) ) ) {
                             echo '<div style="margin-top:4px"><span class="dashicons dashicons-lock" style="vertical-align:middle"></span> <span style="opacity:.8">' . esc_html__( 'No outgoing links', 'beeclear-smart-link-manager-premium' ) . '</span></div>';
