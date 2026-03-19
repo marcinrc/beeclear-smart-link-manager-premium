@@ -1704,12 +1704,11 @@ jQuery(function($){
             .beeclear-ilm-overview .col-sources,.beeclear-ilm-overview .col-targets{width:150px;white-space:nowrap}
             .beeclear-ilm-overview .col-defined{min-width:240px}
             .beeclear-phrase-chip{display:inline-block;background:#f0f0f1;border:1px solid #dcdcde;border-radius:12px;padding:2px 10px;font-size:12px;line-height:1.6;margin:2px 3px 2px 0;white-space:nowrap;color:#1d2327}
-            .beeclear-sortable{cursor:pointer;user-select:none;position:relative}
-            .beeclear-sortable:hover{background:#f0f6fc}
-            .beeclear-sort-arrow{font-size:10px;opacity:.4;margin-left:2px}
-            .beeclear-sortable.sort-asc .beeclear-sort-arrow,.beeclear-sortable.sort-desc .beeclear-sort-arrow{opacity:1}
-            .beeclear-sortable.sort-asc .beeclear-sort-arrow::after{content:"\\25B4"}
-            .beeclear-sortable.sort-desc .beeclear-sort-arrow::after{content:"\\25BE"}
+            .beeclear-sort{cursor:pointer;user-select:none}
+            .beeclear-sort:hover{background:#eef1f5}
+            .beeclear-sort-icon{font-size:14px;vertical-align:middle;color:#999;margin-left:2px}
+            .beeclear-sort.asc .beeclear-sort-icon::before{content:"\f142"}
+            .beeclear-sort.desc .beeclear-sort-icon::before{content:"\f140"}
             @media (max-width:782px){
                 .beeclear-ilm-overview th,.beeclear-ilm-overview td{padding:10px 8px}
                 .beeclear-ilm-overview .col-phrases,.beeclear-ilm-overview .col-inbound,.beeclear-ilm-overview .col-sources,.beeclear-ilm-overview .col-targets{width:auto}
@@ -4037,10 +4036,10 @@ jQuery(function($){
             echo '<div class="beeclear-ilm-overview-table-wrap">';
             echo '<table id="beeclear-ilm-ext-table" class="widefat striped beeclear-ilm-overview"><thead><tr>';
             $target_label = $view === 'targets' ? __('Target', 'beeclear-smart-link-manager') : ($view === 'sources' ? __('Source', 'beeclear-smart-link-manager') : __('External target', 'beeclear-smart-link-manager'));
-            echo '<th class="col-target beeclear-sortable" data-sort="title" role="button" tabindex="0">' . esc_html($target_label) . ' <span class="beeclear-sort-arrow">&#x25B4;&#x25BE;</span></th>';
-            echo '<th class="col-phrases beeclear-sortable" data-sort="phrases_count" role="button" tabindex="0">' . esc_html__('# phrases', 'beeclear-smart-link-manager') . ' <span class="beeclear-sort-arrow">&#x25B4;&#x25BE;</span></th>';
+            echo '<th class="col-target beeclear-sort" data-sort="string" data-col="0">' . esc_html($target_label) . ' <span class="beeclear-sort-icon dashicons dashicons-sort"></span></th>';
+            echo '<th class="col-phrases beeclear-sort" data-sort="num" data-col="1">' . esc_html__('# phrases', 'beeclear-smart-link-manager') . ' <span class="beeclear-sort-icon dashicons dashicons-sort"></span></th>';
             $links_label = $view === 'targets' ? __('# inbound links', 'beeclear-smart-link-manager') : ($view === 'sources' ? __('# outbound links', 'beeclear-smart-link-manager') : __('# links', 'beeclear-smart-link-manager'));
-            echo '<th class="col-inbound beeclear-sortable" data-sort="link_count" role="button" tabindex="0">' . esc_html($links_label) . ' <span class="beeclear-sort-arrow">&#x25B4;&#x25BE;</span></th>';
+            echo '<th class="col-inbound beeclear-sort" data-sort="num" data-col="2">' . esc_html($links_label) . ' <span class="beeclear-sort-icon dashicons dashicons-sort"></span></th>';
             echo '<th class="col-defined">' . esc_html__('Defined phrases', 'beeclear-smart-link-manager') . '</th>';
             $middle_label = $view === 'sources' ? __('Targets', 'beeclear-smart-link-manager') : __('Sources', 'beeclear-smart-link-manager');
             echo '<th class="' . esc_attr($view === 'sources' ? 'col-targets' : 'col-sources') . '">' . esc_html($middle_label) . '</th>';
@@ -4143,21 +4142,21 @@ jQuery(function($){
                 . '});';
             $sort_script = 'jQuery(function($){'
                 . 'var $table=$("#beeclear-ilm-ext-table");if(!$table.length)return;'
-                . 'var colMap={};$table.find("thead th").each(function(i){var s=$(this).data("sort");if(s)colMap[s]=i;});'
-                . '$table.on("click",".beeclear-sortable",function(){'
-                . 'var $th=$(this),key=$th.data("sort"),idx=colMap[key];if(idx===undefined)return;'
-                . 'var asc=!$th.hasClass("sort-asc");'
-                . '$table.find(".beeclear-sortable").removeClass("sort-asc sort-desc");'
-                . '$th.addClass(asc?"sort-asc":"sort-desc");'
-                . 'var $tbody=$table.find("tbody"),rows=$tbody.find("tr").get();'
-                . 'rows.sort(function(a,b){'
-                . 'var av=$(a).children("td").eq(idx).attr("data-sort-value")||"";'
-                . 'var bv=$(b).children("td").eq(idx).attr("data-sort-value")||"";'
-                . 'var an=parseFloat(av),bn=parseFloat(bv);'
-                . 'if(!isNaN(an)&&!isNaN(bn))return asc?an-bn:bn-an;'
-                . 'return asc?av.localeCompare(bv):bv.localeCompare(av);'
+                . '$table.on("click","th.beeclear-sort",function(){'
+                . 'var $th=$(this),col=parseInt($th.data("col"),10),type=$th.data("sort"),'
+                . 'asc=!$th.hasClass("asc");'
+                . '$table.find("th.beeclear-sort").removeClass("asc desc");'
+                . '$th.addClass(asc?"asc":"desc");'
+                . 'var $tbody=$table.find("tbody"),$rows=$tbody.find("tr").get();'
+                . '$rows.sort(function(a,b){'
+                . 'var $ca=$(a).find("td").eq(col),$cb=$(b).find("td").eq(col);'
+                . 'var va=$ca.attr("data-sort-value"),vb=$cb.attr("data-sort-value");'
+                . 'if(typeof va==="undefined")va=$ca.text().trim().toLowerCase();'
+                . 'if(typeof vb==="undefined")vb=$cb.text().trim().toLowerCase();'
+                . 'if(type==="num"){va=parseFloat(va)||0;vb=parseFloat(vb)||0;return asc?va-vb:vb-va;}'
+                . 'return asc?va.localeCompare(vb):vb.localeCompare(va);'
                 . '});'
-                . '$.each(rows,function(i,row){$tbody.append(row);});'
+                . '$.each($rows,function(i,row){$tbody.append(row);});'
                 . '});'
                 . '});';
             $h = 'beeclear-ilm-admin-runtime';
