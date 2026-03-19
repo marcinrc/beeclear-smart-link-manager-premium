@@ -2569,7 +2569,7 @@ JS;
                     'id'    => 'beeclear-ilm-scan',
                     'title' => '<span class="beeclear-adminbar-scan-label">' . $label . '</span>'
                              . '<span class="beeclear-adminbar-scan-track" style="display:inline-block;width:60px;height:10px;background:#455a64;border-radius:3px;margin-left:6px;vertical-align:middle;overflow:hidden;">'
-                             . '<span class="beeclear-adminbar-scan-bar" style="display:block;height:100%;width:' . $percent . '%;background:#76c442;border-radius:3px;transition:width .3s;"></span>'
+                             . '<span class="beeclear-adminbar-scan-bar" style="display:block;height:100%;width:' . esc_attr( $percent ) . '%;background:#76c442;border-radius:3px;transition:width .3s;"></span>'
                              . '</span>',
                     'href'  => esc_url( admin_url( 'admin.php?page=beeclear-ilm' ) ),
                     'meta'  => array( 'class' => 'beeclear-ilm-scan-node' ),
@@ -2590,7 +2590,7 @@ JS;
                     'id'    => 'beeclear-ilm-rebuild',
                     'title' => '<span class="beeclear-adminbar-rebuild-label">' . $rb_label . '</span>'
                              . '<span class="beeclear-adminbar-rebuild-track" style="display:inline-block;width:60px;height:10px;background:#455a64;border-radius:3px;margin-left:6px;vertical-align:middle;overflow:hidden;">'
-                             . '<span class="beeclear-adminbar-rebuild-bar" style="display:block;height:100%;width:' . $rb_percent . '%;background:#2196f3;border-radius:3px;transition:width .3s;"></span>'
+                             . '<span class="beeclear-adminbar-rebuild-bar" style="display:block;height:100%;width:' . esc_attr( $rb_percent ) . '%;background:#2196f3;border-radius:3px;transition:width .3s;"></span>'
                              . '</span>',
                     'href'  => esc_url( admin_url( 'admin.php?page=beeclear-ilm' ) ),
                     'meta'  => array( 'class' => 'beeclear-ilm-rebuild-node' ),
@@ -5706,7 +5706,7 @@ JS;
                                 $preview_items[] = esc_html( $ph ) . (( $badge ? ' <span style="opacity:.6">[' . esc_html( $badge ) . ']</span>' : '' ));
                             }
                             echo '<strong>' . intval( $count ) . '</strong>';
-                            echo '<div\\1>' . wp_kses_post( implode( ', ', $preview_items ) . (( $count > 3 ? '…' : '' )) ) . '</div>';
+                            echo '<div>' . wp_kses_post( implode( ', ', $preview_items ) . (( $count > 3 ? '…' : '' )) ) . '</div>';
                         }
                         if ( !empty( get_post_meta( $post_id, self::META_NO_OUT, true ) ) ) {
                             echo '<div style="margin-top:4px"><span class="dashicons dashicons-lock" style="vertical-align:middle"></span> <span style="opacity:.8">' . esc_html__( 'No outgoing links', 'beeclear-smart-link-manager-premium' ) . '</span></div>';
