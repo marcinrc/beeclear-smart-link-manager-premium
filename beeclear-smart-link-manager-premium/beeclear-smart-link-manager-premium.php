@@ -147,6 +147,9 @@ if ( !class_exists( 'BeeClear_ILM', false ) ) {
         const OPT_ACTIVITY_LOG = 'beeclear_ilm_activity_log';
 
         // recent maintenance/scan logs
+        const OPT_REBUILD_STATE = 'beeclear_ilm_rebuild_state';
+
+        // background index rebuild state
         const OPT_DBVER = 'beeclear_ilm_db_version';
 
         // migration marker
@@ -223,6 +226,8 @@ if ( !class_exists( 'BeeClear_ILM', false ) ) {
             add_action( 'admin_enqueue_scripts', array($this, 'admin_assets') );
             add_action( 'admin_head', array($this, 'admin_head_fallback_css') );
             add_action( 'beeclear_ilm_async_scan', array($this, 'process_async_scan') );
+            add_action( 'beeclear_ilm_async_rebuild_index', array($this, 'run_async_rebuild_index') );
+            add_action( 'wp_ajax_beeclear_ilm_rebuild_status', array($this, 'ajax_rebuild_status') );
             add_action( 'wp_ajax_beeclear_ilm_expand_sources', array($this, 'ajax_expand_sources') );
             add_action( 'wp_ajax_beeclear_ilm_expand_sources_paginated', array($this, 'ajax_expand_sources_paginated') );
             add_action( 'wp_ajax_beeclear_ilm_start_overview_scan', array($this, 'ajax_start_overview_scan') );
@@ -310,7 +315,7 @@ if ( !class_exists( 'BeeClear_ILM', false ) ) {
                 '',
                 false
             );
-            $this->rebuild_index();
+            $this->schedule_index_rebuild();
         }
 
         public function deactivate() {
@@ -452,7 +457,7 @@ if ( !class_exists( 'BeeClear_ILM', false ) ) {
                     update_option( self::OPT_DBVER, '1.4.0-failed', false );
                     return;
                 }
-                $this->rebuild_index();
+                $this->schedule_index_rebuild();
             }
             update_option( self::OPT_DBVER, self::VERSION, false );
         }
@@ -610,7 +615,7 @@ if ( !class_exists( 'BeeClear_ILM', false ) ) {
             if ( !current_user_can( 'manage_options' ) ) {
                 return;
             }
-            $this->rebuild_index();
+            $this->schedule_index_rebuild();
             if ( empty( $value['auto_scan_on_save'] ) && empty( $value['auto_scan_on_external'] ) ) {
                 return;
             }
@@ -1208,6 +1213,7 @@ if ( !class_exists( 'BeeClear_ILM', false ) ) {
                 'scan_unable'         => __( 'Unable to start scan.', 'beeclear-smart-link-manager-premium' ),
                 'scan_empty'          => __( 'Nothing to scan.', 'beeclear-smart-link-manager-premium' ),
                 'scan_running'        => __( 'Overview scan in progress…', 'beeclear-smart-link-manager-premium' ),
+                'rebuild_running'     => __( 'Index rebuild…', 'beeclear-smart-link-manager-premium' ),
             );
             wp_add_inline_script( 'jquery', 'window.BeeClearILM = window.BeeClearILM || {}; BeeClearILM.i18n = ' . wp_json_encode( $L ) . '; BeeClearILM.nonce = "' . wp_create_nonce( self::NONCE ) . '"; BeeClearILM.settingsUrl = "' . esc_url( admin_url( 'admin.php?page=beeclear-ilm' ) ) . '";', 'before' );
             $js = <<<'JS'
@@ -1430,6 +1436,67 @@ jQuery(function($){
     /* Auto-start polling if admin bar already shows scan in progress (server-rendered) */
     if($('#wp-admin-bar-beeclear-ilm-scan').length){
         startScanPoll();
+    }
+
+    /* ── Global background index-rebuild polling (runs on EVERY admin page) ── */
+    function updateAdminBarRebuild(percent){
+        var $item = $('#wp-admin-bar-beeclear-ilm-rebuild');
+        if(!$item.length){
+            var $menu = $('#wp-admin-bar-root-default');
+            if(!$menu.length) return;
+            $item = $('<li>', {id: 'wp-admin-bar-beeclear-ilm-rebuild'}).append(
+                $('<a>', {class: 'ab-item', href: settingsUrl || '#'}).html(
+                    '<span class="beeclear-adminbar-rebuild-label"></span>' +
+                    '<span class="beeclear-adminbar-rebuild-track" style="display:inline-block;width:60px;height:10px;background:#455a64;border-radius:3px;margin-left:6px;vertical-align:middle;overflow:hidden;">' +
+                    '<span class="beeclear-adminbar-rebuild-bar" style="display:block;height:100%;width:0%;background:#2196f3;border-radius:3px;transition:width .3s;"></span>' +
+                    '</span>'
+                )
+            );
+            $menu.append($item);
+        }
+        var label = (L.rebuild_running || 'Index rebuild') + ' ' + percent + '%';
+        $item.find('.beeclear-adminbar-rebuild-label').text(label);
+        $item.find('.beeclear-adminbar-rebuild-bar').css('width', percent + '%');
+    }
+
+    function removeAdminBarRebuild(){
+        $('#wp-admin-bar-beeclear-ilm-rebuild').remove();
+    }
+
+    var rebuildPollTimer = null,
+        rebuildPolling = false;
+
+    function pollRebuildStatus(){
+        if(rebuildPolling) return;
+        rebuildPolling = true;
+        $.post(ajaxurl,{action:'beeclear_ilm_rebuild_status', _ajax_nonce: scanNonce}, function(resp){
+            rebuildPolling = false;
+            if(!resp || !resp.success || !resp.data){ stopRebuildPoll(); removeAdminBarRebuild(); return; }
+            var d = resp.data;
+            if(d.done){
+                removeAdminBarRebuild();
+                stopRebuildPoll();
+                return;
+            }
+            var pct = d.total ? Math.round((d.processed / d.total) * 100) : 0;
+            pct = Math.max(0, Math.min(100, pct));
+            updateAdminBarRebuild(pct);
+        }).fail(function(){ rebuildPolling = false; });
+    }
+
+    function startRebuildPoll(){
+        if(rebuildPollTimer) return;
+        pollRebuildStatus();
+        rebuildPollTimer = setInterval(pollRebuildStatus, 3000);
+    }
+
+    function stopRebuildPoll(){
+        if(rebuildPollTimer){ clearInterval(rebuildPollTimer); rebuildPollTimer = null; }
+    }
+
+    /* Auto-start rebuild polling if admin bar already shows rebuild in progress */
+    if($('#wp-admin-bar-beeclear-ilm-rebuild').length){
+        startRebuildPoll();
     }
 
     /* ── Settings page: scan button (starts background scan) ── */
@@ -2135,15 +2202,15 @@ JS;
             if ( $explicit_clear ) {
                 if ( !empty( $current_rules ) ) {
                     update_post_meta( $post_id, self::META_RULES, array() );
-                    $this->rebuild_index();
+                    $this->schedule_index_rebuild();
                 } elseif ( ($limit_changed || $priority_changed || $meta_changed) && !empty( $current_limit_meta ) ) {
-                    $this->rebuild_index();
+                    $this->schedule_index_rebuild();
                 }
                 return;
             }
             if ( !array_key_exists( 'beeclear_ilm_rules', $_POST ) ) {
                 if ( ($limit_changed || $priority_changed || $meta_changed) && !empty( $current_rules ) ) {
-                    $this->rebuild_index();
+                    $this->schedule_index_rebuild();
                 }
                 return;
             }
@@ -2198,18 +2265,18 @@ JS;
             }
             if ( empty( $rules ) && !empty( $current_rules ) ) {
                 if ( ($limit_changed || $priority_changed || $meta_changed) && !empty( $current_rules ) ) {
-                    $this->rebuild_index();
+                    $this->schedule_index_rebuild();
                 }
                 return;
             }
             if ( $current_rules === $rules ) {
                 if ( ($limit_changed || $priority_changed || $meta_changed) && !empty( $current_rules ) ) {
-                    $this->rebuild_index();
+                    $this->schedule_index_rebuild();
                 }
                 return;
             }
             update_post_meta( $post_id, self::META_RULES, $rules );
-            $this->rebuild_index();
+            $this->schedule_index_rebuild();
         }
 
         public function on_post_delete( $post_id ) {
@@ -2219,7 +2286,7 @@ JS;
             delete_post_meta( $post_id, self::META_ALLOWED_TAGS );
             delete_post_meta( $post_id, self::META_CONTEXT_FLAG );
             delete_post_meta( $post_id, self::META_TARGET_PRIORITY );
-            $this->rebuild_index();
+            $this->schedule_index_rebuild();
         }
 
         public function trigger_full_rebuild_after_save( $post_ID, $post, $update ) {
@@ -2240,9 +2307,9 @@ JS;
             if ( get_post_status( $post_ID ) !== 'publish' ) {
                 return;
             }
-            // Skip if save_post_rules() already rebuilt the index in this request.
+            // Skip if save_post_rules() already scheduled the rebuild in this request.
             if ( ! $this->index_rebuilt_this_request ) {
-                $this->rebuild_index();
+                $this->schedule_index_rebuild();
             }
             $this->maybe_run_overview_scan_after_save();
         }
@@ -2298,6 +2365,155 @@ JS;
         }
 
         /**
+         * Schedule an asynchronous index rebuild via WP-Cron so the post-save
+         * request is not blocked by the full rebuild.  Collects post IDs up
+         * front and stores them in OPT_REBUILD_STATE so the cron callback can
+         * process them in batches with progress tracking.
+         */
+        private function schedule_index_rebuild() {
+            $this->index_rebuilt_this_request = true;
+
+            $settings = get_option( self::OPT_SETTINGS, array() );
+            $pts = ( !empty( $settings['process_post_types'] ) ? (array) $settings['process_post_types'] : array('post', 'page') );
+
+            $q = new WP_Query(array(
+                'post_type'      => $pts,
+                'post_status'    => 'publish',
+                'posts_per_page' => -1,
+                'fields'         => 'ids',
+                'no_found_rows'  => true,
+                'orderby'        => 'ID',
+                'order'          => 'ASC',
+            ));
+
+            $ids = ( ! is_wp_error( $q ) && ! empty( $q->posts ) ) ? (array) $q->posts : array();
+
+            $state = array(
+                'ids'        => $ids,
+                'processed'  => 0,
+                'total'      => count( $ids ),
+                'index'      => array(),
+                'started_at' => time(),
+            );
+            update_option( self::OPT_REBUILD_STATE, $state, false );
+
+            $ts = wp_next_scheduled( 'beeclear_ilm_async_rebuild_index' );
+            if ( $ts ) {
+                wp_unschedule_event( $ts, 'beeclear_ilm_async_rebuild_index' );
+            }
+            wp_schedule_single_event( time(), 'beeclear_ilm_async_rebuild_index' );
+            if ( function_exists( 'spawn_cron' ) ) {
+                spawn_cron();
+            }
+        }
+
+        /**
+         * WP-Cron callback: processes index rebuild in batches.  Each
+         * invocation handles up to 200 posts and reschedules itself until all
+         * are processed, then sorts and saves the final index.
+         */
+        public function run_async_rebuild_index() {
+            $state = get_option( self::OPT_REBUILD_STATE, array() );
+            if ( empty( $state ) || ! isset( $state['ids'] ) ) {
+                // No state – fall back to a full synchronous rebuild.
+                $this->rebuild_index( __( 'Index rebuild (no state).', 'beeclear-smart-link-manager-premium' ) );
+                delete_option( self::OPT_REBUILD_STATE );
+                return;
+            }
+
+            $ids       = (array) $state['ids'];
+            $processed = isset( $state['processed'] ) ? (int) $state['processed'] : 0;
+            $index     = isset( $state['index'] ) ? (array) $state['index'] : array();
+            $batch_size = 200;
+
+            $batch = array_slice( $ids, $processed, $batch_size );
+            if ( ! empty( $batch ) ) {
+                update_postmeta_cache( $batch );
+                foreach ( $batch as $pid ) {
+                    $rules = get_post_meta( $pid, self::META_RULES, true );
+                    if ( ! is_array( $rules ) || empty( $rules ) ) {
+                        continue;
+                    }
+                    $per_target_limit = get_post_meta( $pid, self::META_MAX_PER_TARGET, true );
+                    $per_target_limit = ( $per_target_limit === '' ? null : max( 0, (int) $per_target_limit ) );
+                    $target_priority = (int) get_post_meta( $pid, self::META_TARGET_PRIORITY, true );
+                    if ( $target_priority < 0 ) {
+                        $target_priority = 0;
+                    }
+                    if ( $target_priority > 100 ) {
+                        $target_priority = 100;
+                    }
+                    $allowed_tags = $this->parse_tag_list( get_post_meta( $pid, self::META_ALLOWED_TAGS, true ) );
+                    $context_flag = ! empty( get_post_meta( $pid, self::META_CONTEXT_FLAG, true ) );
+                    $prio = 0;
+                    foreach ( $rules as $r ) {
+                        $phrase = ( isset( $r['phrase'] ) ? trim( (string) $r['phrase'] ) : '' );
+                        if ( $phrase === '' ) {
+                            continue;
+                        }
+                        $context_regex = ! empty( $r['context_regex'] );
+                        $context_case  = ! empty( $r['context_case'] ) && empty( $r['context_regex'] );
+                        $context_terms = array();
+                        if ( $context_flag && ! empty( $r['context'] ) && is_array( $r['context'] ) ) {
+                            foreach ( $r['context'] as $ctx ) {
+                                $ctx = ( is_string( $ctx ) ? trim( $ctx ) : '' );
+                                if ( $ctx !== '' ) {
+                                    $context_terms[] = $ctx;
+                                }
+                            }
+                        }
+                        $index[] = array(
+                            'phrase'          => $phrase,
+                            'regex'           => ! empty( $r['regex'] ),
+                            'case'            => ! empty( $r['case'] ),
+                            'target'          => (int) $pid,
+                            'max_per_target'  => $per_target_limit,
+                            'priority'        => $prio++,
+                            'target_priority' => $target_priority,
+                            'allowed_tags'    => $allowed_tags,
+                            'context_enabled' => $context_flag,
+                            'context'         => $context_terms,
+                            'context_regex'   => $context_regex,
+                            'context_case'    => $context_case,
+                        );
+                    }
+                }
+            }
+
+            $processed += count( $batch );
+
+            if ( $processed >= count( $ids ) ) {
+                // All done – sort, save final index, clean up state.
+                usort( $index, function ( $a, $b ) {
+                    if ( $a['target_priority'] !== $b['target_priority'] ) {
+                        return ( $a['target_priority'] > $b['target_priority'] ? -1 : 1 );
+                    }
+                    if ( $a['priority'] === $b['priority'] ) {
+                        if ( $a['target'] === $b['target'] ) {
+                            return strcmp( $a['phrase'], $b['phrase'] );
+                        }
+                        return $a['target'] - $b['target'];
+                    }
+                    return $a['priority'] - $b['priority'];
+                } );
+                update_option( self::OPT_INDEX, $index, false );
+                delete_option( self::OPT_REBUILD_STATE );
+                $this->log_activity( __( 'Index rebuild completed.', 'beeclear-smart-link-manager-premium' ) );
+                return;
+            }
+
+            // Save progress and reschedule.
+            $state['processed'] = $processed;
+            $state['index']     = $index;
+            update_option( self::OPT_REBUILD_STATE, $state, false );
+
+            wp_schedule_single_event( time() + 1, 'beeclear_ilm_async_rebuild_index' );
+            if ( function_exists( 'spawn_cron' ) ) {
+                spawn_cron();
+            }
+        }
+
+        /**
          * WP-Cron callback that processes the queued overview scan in small
          * batches.  Runs outside the user-facing request so it cannot trigger
          * WAF rate-limit or timeout rules.
@@ -2332,25 +2548,46 @@ JS;
             if ( ! current_user_can( 'manage_options' ) ) {
                 return;
             }
+            // Overview scan progress bar.
             $state = get_option( self::OPT_OVERVIEW_SCAN, array() );
-            if ( empty( $state ) || empty( $state['ids'] ) ) {
-                return;
+            if ( ! empty( $state ) && ! empty( $state['ids'] ) ) {
+                $processed = isset( $state['processed'] ) ? (int) $state['processed'] : 0;
+                $total     = isset( $state['total'] ) ? (int) $state['total'] : 0;
+                $percent   = $total ? min( 100, round( ( $processed / $total ) * 100 ) ) : 0;
+
+                $label = esc_html( sprintf( __( 'Scan %d%%', 'beeclear-smart-link-manager-premium' ), $percent ) );
+
+                $wp_admin_bar->add_node( array(
+                    'id'    => 'beeclear-ilm-scan',
+                    'title' => '<span class="beeclear-adminbar-scan-label">' . $label . '</span>'
+                             . '<span class="beeclear-adminbar-scan-track" style="display:inline-block;width:60px;height:10px;background:#455a64;border-radius:3px;margin-left:6px;vertical-align:middle;overflow:hidden;">'
+                             . '<span class="beeclear-adminbar-scan-bar" style="display:block;height:100%;width:' . $percent . '%;background:#76c442;border-radius:3px;transition:width .3s;"></span>'
+                             . '</span>',
+                    'href'  => esc_url( admin_url( 'admin.php?page=beeclear-ilm' ) ),
+                    'meta'  => array( 'class' => 'beeclear-ilm-scan-node' ),
+                ) );
             }
-            $processed = isset( $state['processed'] ) ? (int) $state['processed'] : 0;
-            $total     = isset( $state['total'] ) ? (int) $state['total'] : 0;
-            $percent   = $total ? min( 100, round( ( $processed / $total ) * 100 ) ) : 0;
 
-            $label = esc_html( sprintf( __( 'Scan %d%%', 'beeclear-smart-link-manager-premium' ), $percent ) );
+            // Index rebuild progress bar.
+            $rb_state = get_option( self::OPT_REBUILD_STATE, array() );
+            if ( ! empty( $rb_state ) && isset( $rb_state['total'] ) ) {
+                $rb_processed = isset( $rb_state['processed'] ) ? (int) $rb_state['processed'] : 0;
+                $rb_total     = (int) $rb_state['total'];
+                $rb_percent   = $rb_total ? min( 100, round( ( $rb_processed / $rb_total ) * 100 ) ) : 0;
 
-            $wp_admin_bar->add_node( array(
-                'id'    => 'beeclear-ilm-scan',
-                'title' => '<span class="beeclear-adminbar-scan-label">' . $label . '</span>'
-                         . '<span class="beeclear-adminbar-scan-track" style="display:inline-block;width:60px;height:10px;background:#455a64;border-radius:3px;margin-left:6px;vertical-align:middle;overflow:hidden;">'
-                         . '<span class="beeclear-adminbar-scan-bar" style="display:block;height:100%;width:' . $percent . '%;background:#76c442;border-radius:3px;transition:width .3s;"></span>'
-                         . '</span>',
-                'href'  => esc_url( admin_url( 'admin.php?page=beeclear-ilm' ) ),
-                'meta'  => array( 'class' => 'beeclear-ilm-scan-node' ),
-            ) );
+                /* translators: %d: rebuild progress percentage */
+                $rb_label = esc_html( sprintf( __( 'Index %d%%', 'beeclear-smart-link-manager-premium' ), $rb_percent ) );
+
+                $wp_admin_bar->add_node( array(
+                    'id'    => 'beeclear-ilm-rebuild',
+                    'title' => '<span class="beeclear-adminbar-rebuild-label">' . $rb_label . '</span>'
+                             . '<span class="beeclear-adminbar-rebuild-track" style="display:inline-block;width:60px;height:10px;background:#455a64;border-radius:3px;margin-left:6px;vertical-align:middle;overflow:hidden;">'
+                             . '<span class="beeclear-adminbar-rebuild-bar" style="display:block;height:100%;width:' . $rb_percent . '%;background:#2196f3;border-radius:3px;transition:width .3s;"></span>'
+                             . '</span>',
+                    'href'  => esc_url( admin_url( 'admin.php?page=beeclear-ilm' ) ),
+                    'meta'  => array( 'class' => 'beeclear-ilm-rebuild-node' ),
+                ) );
+            }
         }
 
         private function maybe_run_overview_scan_after_save() {
@@ -3654,16 +3891,12 @@ JS;
             if ( !current_user_can( 'manage_options' ) ) {
                 return;
             }
-            $this->rebuild_index();
             $settings = get_option( self::OPT_SETTINGS, array() );
             $scan_summary = $this->get_scan_summary();
             if ( isset( $_POST['beeclear_ilm_reindex_now'] ) && check_admin_referer( self::NONCE, self::NONCE ) ) {
-                $index = $this->rebuild_index( __( 'Index rebuild triggered from dashboard.', 'beeclear-smart-link-manager-premium' ) );
-                if ( $this->last_rebuild_error !== '' ) {
-                    echo '<div class="notice notice-error"><p>' . esc_html( $this->last_rebuild_error ) . '</p></div>';
-                } else {
-                    echo '<div class="notice notice-success"><p>' . esc_html__( 'Index rebuilt.', 'beeclear-smart-link-manager-premium' ) . '</p></div>';
-                }
+                $this->schedule_index_rebuild();
+                $this->log_activity( __( 'Index rebuild triggered from dashboard.', 'beeclear-smart-link-manager-premium' ) );
+                echo '<div class="notice notice-success"><p>' . esc_html__( 'Index rebuild scheduled.', 'beeclear-smart-link-manager-premium' ) . '</p></div>';
             }
             if ( isset( $_POST['beeclear_ilm_clear_data'] ) && check_admin_referer( self::NONCE, self::NONCE ) ) {
                 update_option( self::OPT_INDEX, array(), false );
@@ -3671,23 +3904,17 @@ JS;
                 update_option( self::OPT_EXTERNAL_MAP, array(), false );
                 delete_option( self::OPT_OVERVIEW_SCAN_SUMMARY );
                 delete_option( self::OPT_OVERVIEW_SCAN );
-                $this->rebuild_index( __( 'Data cleared and index rebuild triggered from dashboard.', 'beeclear-smart-link-manager-premium' ) );
-                if ( $this->last_rebuild_error !== '' ) {
-                    echo '<div class="notice notice-error"><p>' . esc_html( $this->last_rebuild_error ) . '</p></div>';
-                } else {
-                    echo '<div class="notice notice-success"><p>' . esc_html__( 'Data cleared and index rebuilt.', 'beeclear-smart-link-manager-premium' ) . '</p></div>';
-                }
+                $this->schedule_index_rebuild();
+                $this->log_activity( __( 'Data cleared and index rebuild triggered from dashboard.', 'beeclear-smart-link-manager-premium' ) );
+                echo '<div class="notice notice-success"><p>' . esc_html__( 'Data cleared. Index rebuild scheduled.', 'beeclear-smart-link-manager-premium' ) . '</p></div>';
             }
             if ( isset( $_POST['beeclear_ilm_purge_db'] ) && check_admin_referer( self::NONCE, self::NONCE ) ) {
                 $this->purge_database();
                 delete_option( self::OPT_OVERVIEW_SCAN_SUMMARY );
                 delete_option( self::OPT_OVERVIEW_SCAN );
-                $this->rebuild_index( __( 'Database purged and index rebuild triggered from dashboard.', 'beeclear-smart-link-manager-premium' ) );
-                if ( $this->last_rebuild_error !== '' ) {
-                    echo '<div class="notice notice-error"><p>' . esc_html( $this->last_rebuild_error ) . '</p></div>';
-                } else {
-                    echo '<div class="notice notice-success"><p>' . esc_html__( 'Database purged. Index rebuilt.', 'beeclear-smart-link-manager-premium' ) . '</p></div>';
-                }
+                $this->schedule_index_rebuild();
+                $this->log_activity( __( 'Database purged and index rebuild triggered from dashboard.', 'beeclear-smart-link-manager-premium' ) );
+                echo '<div class="notice notice-success"><p>' . esc_html__( 'Database purged. Index rebuild scheduled.', 'beeclear-smart-link-manager-premium' ) . '</p></div>';
             }
             if ( isset( $_POST['beeclear_ilm_reset_global_settings'] ) && check_admin_referer( self::NONCE, self::NONCE ) ) {
                 $defaults = array(
@@ -4911,7 +5138,7 @@ JS;
                     'message' => __( 'Access denied.', 'beeclear-smart-link-manager-premium' ),
                 ) );
             }
-            $this->rebuild_index();
+            $this->schedule_index_rebuild();
             $settings = get_option( self::OPT_SETTINGS, array() );
             $pts = ( !empty( $settings['process_post_types'] ) ? (array) $settings['process_post_types'] : array('post', 'page') );
             $ids = $this->collect_overview_scan_ids( $pts );
@@ -4971,6 +5198,42 @@ JS;
             ) );
         }
 
+        /**
+         * AJAX endpoint returning current index rebuild progress (read-only).
+         */
+        public function ajax_rebuild_status() {
+            check_ajax_referer( self::NONCE );
+            if ( ! current_user_can( 'manage_options' ) ) {
+                wp_send_json_error( array(
+                    'message' => __( 'Access denied.', 'beeclear-smart-link-manager-premium' ),
+                ) );
+            }
+
+            $state = get_option( self::OPT_REBUILD_STATE, array() );
+
+            if ( empty( $state ) || ! isset( $state['total'] ) ) {
+                wp_send_json_success( array(
+                    'done'      => true,
+                    'processed' => 0,
+                    'total'     => 0,
+                ) );
+            }
+
+            $total     = (int) $state['total'];
+            $processed = isset( $state['processed'] ) ? (int) $state['processed'] : 0;
+            $done      = ( $processed >= $total );
+
+            if ( $done ) {
+                delete_option( self::OPT_REBUILD_STATE );
+            }
+
+            wp_send_json_success( array(
+                'done'      => $done,
+                'processed' => $processed,
+                'total'     => $total,
+            ) );
+        }
+
         public function ajax_fetch_logs() {
             check_ajax_referer( self::NONCE );
             if ( !current_user_can( 'manage_options' ) ) {
@@ -5000,14 +5263,10 @@ JS;
             if ( !current_user_can( 'manage_options' ) ) {
                 return;
             }
-            $this->rebuild_index();
             if ( isset( $_POST['beeclear_ilm_reindex_now'] ) && check_admin_referer( self::NONCE, self::NONCE ) ) {
-                $index = $this->rebuild_index( __( 'Index rebuild triggered from overview.', 'beeclear-smart-link-manager-premium' ) );
-                if ( $this->last_rebuild_error !== '' ) {
-                    echo '<div class="notice notice-error"><p>' . esc_html( $this->last_rebuild_error ) . '</p></div>';
-                } else {
-                    echo '<div class="notice notice-success"><p>' . esc_html__( 'Index rebuilt. Scan completed.', 'beeclear-smart-link-manager-premium' ) . '</p></div>';
-                }
+                $this->schedule_index_rebuild();
+                $this->log_activity( __( 'Index rebuild triggered from overview.', 'beeclear-smart-link-manager-premium' ) );
+                echo '<div class="notice notice-success"><p>' . esc_html__( 'Index rebuild scheduled.', 'beeclear-smart-link-manager-premium' ) . '</p></div>';
             }
             if ( isset( $_POST['beeclear_ilm_clear_data'] ) && check_admin_referer( self::NONCE, self::NONCE ) ) {
                 update_option( self::OPT_INDEX, array(), false );
@@ -5015,24 +5274,18 @@ JS;
                 update_option( self::OPT_EXTERNAL_MAP, array(), false );
                 delete_option( self::OPT_OVERVIEW_SCAN_SUMMARY );
                 delete_option( self::OPT_OVERVIEW_SCAN );
-                $this->rebuild_index( __( 'Data cleared and index rebuild triggered from overview.', 'beeclear-smart-link-manager-premium' ) );
-                if ( $this->last_rebuild_error !== '' ) {
-                    echo '<div class="notice notice-error"><p>' . esc_html( $this->last_rebuild_error ) . '</p></div>';
-                } else {
-                    echo '<div class="notice notice-success"><p>' . esc_html__( 'Data cleared and index rebuilt.', 'beeclear-smart-link-manager-premium' ) . '</p></div>';
-                }
+                $this->schedule_index_rebuild();
+                $this->log_activity( __( 'Data cleared and index rebuild triggered from overview.', 'beeclear-smart-link-manager-premium' ) );
+                echo '<div class="notice notice-success"><p>' . esc_html__( 'Data cleared. Index rebuild scheduled.', 'beeclear-smart-link-manager-premium' ) . '</p></div>';
             }
             if ( isset( $_POST['beeclear_ilm_purge_db'] ) && check_admin_referer( self::NONCE, self::NONCE ) ) {
                 $this->purge_database();
                 delete_option( self::OPT_OVERVIEW_SCAN_SUMMARY );
                 delete_option( self::OPT_OVERVIEW_SCAN );
                 update_option( self::OPT_EXTERNAL_MAP, array(), false );
-                $this->rebuild_index( __( 'Database purged and index rebuild triggered from overview.', 'beeclear-smart-link-manager-premium' ) );
-                if ( $this->last_rebuild_error !== '' ) {
-                    echo '<div class="notice notice-error"><p>' . esc_html( $this->last_rebuild_error ) . '</p></div>';
-                } else {
-                    echo '<div class="notice notice-success"><p>' . esc_html__( 'Database purged. Index rebuilt.', 'beeclear-smart-link-manager-premium' ) . '</p></div>';
-                }
+                $this->schedule_index_rebuild();
+                $this->log_activity( __( 'Database purged and index rebuild triggered from overview.', 'beeclear-smart-link-manager-premium' ) );
+                echo '<div class="notice notice-success"><p>' . esc_html__( 'Database purged. Index rebuild scheduled.', 'beeclear-smart-link-manager-premium' ) . '</p></div>';
             }
             echo '<div class="wrap"><h1>' . esc_html__( 'Linking overview — targets & sources', 'beeclear-smart-link-manager-premium' ) . '</h1>';
             echo wp_kses_post( $this->render_author_note() );
@@ -5066,8 +5319,8 @@ JS;
                 // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- Sanitized in sanitize_external_rules().
                 $clean = $this->sanitize_external_rules( ( is_array( $raw_ext ) ? $raw_ext : array() ) );
                 update_option( self::OPT_EXT_RULES, $clean, false );
-                $this->rebuild_index();
-                echo '<div class="notice notice-success"><p>' . esc_html__( 'External rules saved.', 'beeclear-smart-link-manager-premium' ) . '</p></div>';
+                $this->schedule_index_rebuild();
+                echo '<div class="notice notice-success"><p>' . esc_html__( 'External rules saved. Index rebuild scheduled.', 'beeclear-smart-link-manager-premium' ) . '</p></div>';
                 $settings = get_option( self::OPT_SETTINGS, array() );
                 if ( !empty( $settings['auto_scan_on_external'] ) ) {
                     $pts = ( !empty( $settings['process_post_types'] ) ? (array) $settings['process_post_types'] : array('post', 'page') );
@@ -5271,10 +5524,9 @@ JS;
                             }
                         }
                     }
-                    $idx = $this->rebuild_index( __( 'Import finished and index rebuild triggered.', 'beeclear-smart-link-manager-premium' ) );
-                    echo '<div class="notice notice-success"><p>' . esc_html__( 'Imported successfully and index rebuilt.', 'beeclear-smart-link-manager-premium' ) . '</p>';
-                    echo wp_kses_post( $this->render_index_summary_html( $this->summarize_index( $idx ) ) );
-                    echo '</div>';
+                    $this->schedule_index_rebuild();
+                    $this->log_activity( __( 'Import finished and index rebuild triggered.', 'beeclear-smart-link-manager-premium' ) );
+                    echo '<div class="notice notice-success"><p>' . esc_html__( 'Imported successfully. Index rebuild scheduled.', 'beeclear-smart-link-manager-premium' ) . '</p></div>';
                 } else {
                     echo '<div class="notice notice-error"><p>' . esc_html__( 'Invalid JSON.', 'beeclear-smart-link-manager-premium' ) . '</p></div>';
                 }
