@@ -49,6 +49,44 @@ Premium wykrywa obecność wersji darmowej i przejmuje kontrolę nad hookami. We
 
 Linki **NIE są zapisywane** bezpośrednio w treści postów. Są wstrzykiwane dynamicznie w czasie renderowania strony przez filtry WordPress (`the_content`). Reguły są kompilowane do indeksu, który jest odczytywany przy każdym żądaniu.
 
+### Skanowanie i budowanie indeksu – model wewnętrzny (bez HTTP)
+
+Cały proces skanowania i budowania indeksu odbywa się **wyłącznie po stronie serwera** za pomocą wewnętrznych API WordPressa — **nie generuje zewnętrznych requestów HTTP**, co eliminuje ryzyko blokad przez WAF/firewall.
+
+#### Przepływ danych
+
+1. **Rebuild Index** — wywoływany ręcznie lub automatycznie:
+   - `WP_Query` pobiera posty z bazy danych (wewnętrzne zapytania SQL)
+   - `get_post_meta()` odczytuje reguły per-post (`META_RULES`)
+   - Kompiluje indeks i zapisuje do `OPT_INDEX` przez `update_option()`
+   - **0 requestów HTTP** — cała operacja to PHP ↔ MySQL
+
+2. **Autolink (`the_content`)** — dynamiczne wstrzykiwanie linków:
+   - Filtr WordPress czyta skompilowany `OPT_INDEX` z pamięci/object cache
+   - Podmienia frazy na linki w renderowanym HTML
+   - **0 requestów HTTP** — operacja w pamięci PHP
+
+3. **Skan w tle (WP-Cron)** — przetwarzanie dużych ilości postów w paczkach:
+   - WordPress `spawn_cron()` generuje **1 loopback request** na `wp-cron.php` per tick
+   - Cała logika skanowania wykonuje się wewnętrznie (WP_Query + get_post_meta)
+   - **Minimalne ryzyko WAF** — jedyny ruch sieciowy to sporadyczny loopback
+
+4. **Polling statusu z przeglądarki (AJAX)** — monitorowanie postępu skanu:
+   - Przeglądarka wysyła **1 lekki AJAX request co ~3 sekundy** (read-only, odczyt statusu)
+   - Endpoint tylko odczytuje flagę postępu — brak ciężkiego przetwarzania
+   - **Minimalne ryzyko WAF** — niski rate, brak modyfikacji danych
+
+#### Podsumowanie requestów HTTP
+
+| Akcja | Requesty HTTP | Ryzyko WAF |
+|---|---|---|
+| Rebuild index | 0 (wewnętrzne WP_Query + get_post_meta) | Brak |
+| Autolink (the_content) | 0 (czyta OPT_INDEX z pamięci/cache) | Brak |
+| Skan w tle (WP-Cron) | 1 loopback na `wp-cron.php` per tick | Minimalny |
+| Polling statusu z przeglądarki | 1 AJAX co ~3s (read-only) | Minimalny |
+
+> **Dlaczego to ważne:** Wcześniejsze podejście (przeglądarka wysyłała dziesiątki AJAX requestów na sekundę, każdy z przetwarzaniem) mogło być interpretowane przez WAF jako atak brute-force/DDoS. Obecny model przenosi całe przetwarzanie na stronę serwera (WP-Cron + batch processing), a przeglądarka jedynie odpytuje o status.
+
 ## Wymagania techniczne
 
 - **PHP:** >= 7.4
