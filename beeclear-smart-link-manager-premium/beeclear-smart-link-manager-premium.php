@@ -4608,6 +4608,10 @@ JS;
             .beeclear-ilm-popup-body table{width:100%;border-collapse:collapse}
             .beeclear-ilm-popup-body th,.beeclear-ilm-popup-body td{padding:6px 10px;border-bottom:1px solid #eee;text-align:left;vertical-align:top;font-size:13px}
             .beeclear-ilm-popup-body th{font-weight:600;white-space:nowrap}
+            .beeclear-ilm-popup-body a{text-decoration:none}
+            .beeclear-ilm-popup-body a:hover{text-decoration:underline}
+            .beeclear-ilm-popup-body .dashicons{font-size:14px;width:14px;height:14px;text-decoration:none}
+            .beeclear-ilm-popup-body a .dashicons{text-decoration:none}
             .beeclear-ilm-popup-body .beeclear-ctx-snippet{color:#666;font-size:12px;max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
             .beeclear-ilm-popup-pagination{padding:10px 20px;border-top:1px solid #ddd;text-align:center;display:flex;gap:6px;justify-content:center;flex-wrap:wrap}
             .beeclear-ilm-popup-pagination button{min-width:32px;padding:4px 10px;border:1px solid #ccc;background:#f7f7f7;cursor:pointer;border-radius:3px;font-size:13px}
@@ -4998,7 +5002,7 @@ JS;
                         echo esc_html( $item['page_title'] );
                     }
                     if ( ! empty( $item['edit_url'] ) ) {
-                        echo ' <a href="' . esc_url( $item['edit_url'] ) . '" title="' . esc_attr__( 'Edit', 'beeclear-smart-link-manager-premium' ) . '"><span class="dashicons dashicons-edit" style="font-size:14px;width:14px;height:14px"></span></a>';
+                        echo ' <a href="' . esc_url( $item['edit_url'] ) . '" title="' . esc_attr__( 'Edit', 'beeclear-smart-link-manager-premium' ) . '"><span class="dashicons dashicons-edit"></span></a>';
                     }
                     echo '</td>';
                     echo '<td>';
