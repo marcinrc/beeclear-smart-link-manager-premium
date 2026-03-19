@@ -115,6 +115,7 @@ if (!class_exists('BeeClear_ILM', false)):
             add_action('admin_enqueue_scripts', array($this, 'admin_assets'));
             add_action('admin_head', array($this, 'admin_head_fallback_css'));
             add_action('beeclear_ilm_async_scan', array($this, 'process_async_scan'));
+            add_action('beeclear_ilm_async_rebuild_index', array($this, 'run_async_rebuild_index'));
             add_action('wp_ajax_beeclear_ilm_expand_sources', array($this, 'ajax_expand_sources'));
             add_action('wp_ajax_beeclear_ilm_expand_sources_paginated', array($this, 'ajax_expand_sources_paginated'));
             add_action('wp_ajax_beeclear_ilm_start_overview_scan', array($this, 'ajax_start_overview_scan'));
@@ -175,7 +176,7 @@ if (!class_exists('BeeClear_ILM', false)):
             add_option(self::OPT_OVERVIEW_SCAN_SUMMARY, array(), '', false);
             add_option(self::OPT_ACTIVITY_LOG, array(), '', false);
             add_option(self::OPT_DBVER, self::VERSION, '', false);
-            $this->rebuild_index();
+            $this->schedule_index_rebuild();
         }
 
         public function deactivate()
@@ -308,7 +309,7 @@ if (!class_exists('BeeClear_ILM', false)):
                     update_option(self::OPT_DBVER, '1.4.0-failed', false);
                     return;
                 }
-                $this->rebuild_index();
+                $this->schedule_index_rebuild();
             }
 
             update_option(self::OPT_DBVER, self::VERSION, false);
@@ -335,10 +336,8 @@ if (!class_exists('BeeClear_ILM', false)):
             if ($nonce === '' || !wp_verify_nonce($nonce, 'beeclear_ilm_group-options'))
                 return;
 
-            $this->rebuild_index();
-            if ($this->last_rebuild_error === '') {
-                $this->log_activity(__('Index rebuilt after saving global settings.', 'beeclear-smart-link-manager'));
-            }
+            $this->schedule_index_rebuild();
+            $this->log_activity(__('Index rebuild scheduled after saving global settings.', 'beeclear-smart-link-manager'));
         }
 
         public function admin_menu()
@@ -1859,16 +1858,16 @@ jQuery(function($){
             if ($explicit_clear) {
                 if (!empty($current_rules)) {
                     update_post_meta($post_id, self::META_RULES, array());
-                    $this->rebuild_index();
+                    $this->schedule_index_rebuild();
                 } elseif (($limit_changed || $meta_changed) && !empty($current_limit_meta)) {
-                    $this->rebuild_index();
+                    $this->schedule_index_rebuild();
                 }
                 return;
             }
 
             if (!array_key_exists('beeclear_ilm_rules', $_POST)) {
                 if (($limit_changed || $meta_changed) && !empty($current_rules)) {
-                    $this->rebuild_index();
+                    $this->schedule_index_rebuild();
                 }
                 return;
             }
@@ -1908,20 +1907,20 @@ jQuery(function($){
 
             if (empty($rules) && !empty($current_rules)) {
                 if (($limit_changed || $meta_changed) && !empty($current_rules)) {
-                    $this->rebuild_index();
+                    $this->schedule_index_rebuild();
                 }
                 return;
             }
 
             if ($current_rules === $rules) {
                 if (($limit_changed || $meta_changed) && !empty($current_rules)) {
-                    $this->rebuild_index();
+                    $this->schedule_index_rebuild();
                 }
                 return;
             }
 
             update_post_meta($post_id, self::META_RULES, $rules);
-            $this->rebuild_index();
+            $this->schedule_index_rebuild();
         }
 
         public function block_empty_phrase_save($data, $postarr)
@@ -1999,7 +1998,7 @@ jQuery(function($){
             delete_post_meta($post_id, self::META_MAX_PER_TARGET);
             delete_post_meta($post_id, self::META_ALLOWED_TAGS);
             delete_post_meta($post_id, self::META_CONTEXT_FLAG);
-            $this->rebuild_index();
+            $this->schedule_index_rebuild();
         }
 
         public function trigger_full_rebuild_after_save($post_ID, $post, $update)
@@ -2017,9 +2016,9 @@ jQuery(function($){
                 return;
             if (get_post_status($post_ID) !== 'publish')
                 return;
-            // Skip if save_post_rules() already rebuilt the index in this request.
+            // Skip if save_post_rules() already scheduled the rebuild in this request.
             if (!$this->index_rebuilt_this_request) {
-                $this->rebuild_index();
+                $this->schedule_index_rebuild();
             }
 
             $this->maybe_run_overview_scan_after_save();
@@ -2037,7 +2036,7 @@ jQuery(function($){
         private function start_overview_scan_now($post_types, $log_message = '', $rebuild_first = true)
         {
             if ($rebuild_first) {
-                $this->rebuild_index();
+                $this->schedule_index_rebuild();
             }
             $pts = !empty($post_types) ? array_values(array_unique((array) $post_types)) : array('post', 'page');
             $ids = $this->collect_overview_scan_ids($pts);
@@ -2081,6 +2080,31 @@ jQuery(function($){
             if (function_exists('spawn_cron')) {
                 spawn_cron();
             }
+        }
+
+        /**
+         * Schedule an asynchronous index rebuild via WP-Cron so the post-save
+         * request is not blocked by the full rebuild.
+         */
+        private function schedule_index_rebuild()
+        {
+            $this->index_rebuilt_this_request = true;
+            $ts = wp_next_scheduled('beeclear_ilm_async_rebuild_index');
+            if ($ts) {
+                wp_unschedule_event($ts, 'beeclear_ilm_async_rebuild_index');
+            }
+            wp_schedule_single_event(time(), 'beeclear_ilm_async_rebuild_index');
+            if (function_exists('spawn_cron')) {
+                spawn_cron();
+            }
+        }
+
+        /**
+         * WP-Cron callback: runs rebuild_index() in the background.
+         */
+        public function run_async_rebuild_index()
+        {
+            $this->rebuild_index();
         }
 
         /**
@@ -3189,18 +3213,13 @@ jQuery(function($){
             if (!current_user_can('manage_options'))
                 return;
 
-            $this->rebuild_index();
             $settings = get_option(self::OPT_SETTINGS, array());
             $scan_summary = $this->get_scan_summary();
 
             if (isset($_POST['beeclear_ilm_reindex_now']) && check_admin_referer(self::NONCE, self::NONCE)) {
-                $index = $this->rebuild_index();
-                if ($this->last_rebuild_error !== '') {
-                    echo '<div class="notice notice-error"><p>' . esc_html($this->last_rebuild_error) . '</p></div>';
-                } else {
-                    echo '<div class="notice notice-success"><p>' . esc_html__('Index rebuilt.', 'beeclear-smart-link-manager') . '</p></div>';
-                    $this->log_activity(__('Index rebuilt from dashboard.', 'beeclear-smart-link-manager'));
-                }
+                $this->schedule_index_rebuild();
+                $this->log_activity(__('Index rebuild triggered from dashboard.', 'beeclear-smart-link-manager'));
+                echo '<div class="notice notice-success"><p>' . esc_html__('Index rebuild scheduled.', 'beeclear-smart-link-manager') . '</p></div>';
             }
 
             if (isset($_POST['beeclear_ilm_clear_data']) && check_admin_referer(self::NONCE, self::NONCE)) {
@@ -3209,26 +3228,18 @@ jQuery(function($){
                 update_option(self::OPT_EXTERNAL_MAP, array(), false);
                 delete_option(self::OPT_OVERVIEW_SCAN_SUMMARY);
                 delete_option(self::OPT_OVERVIEW_SCAN);
-                $this->rebuild_index();
-                if ($this->last_rebuild_error !== '') {
-                    echo '<div class="notice notice-error"><p>' . esc_html($this->last_rebuild_error) . '</p></div>';
-                } else {
-                    echo '<div class="notice notice-success"><p>' . esc_html__('Data cleared and index rebuilt.', 'beeclear-smart-link-manager') . '</p></div>';
-                    $this->log_activity(__('Data cleared and index rebuilt from dashboard.', 'beeclear-smart-link-manager'));
-                }
+                $this->schedule_index_rebuild();
+                $this->log_activity(__('Data cleared and index rebuild triggered from dashboard.', 'beeclear-smart-link-manager'));
+                echo '<div class="notice notice-success"><p>' . esc_html__('Data cleared. Index rebuild scheduled.', 'beeclear-smart-link-manager') . '</p></div>';
             }
 
             if (isset($_POST['beeclear_ilm_purge_db']) && check_admin_referer(self::NONCE, self::NONCE)) {
                 $this->purge_database();
                 delete_option(self::OPT_OVERVIEW_SCAN_SUMMARY);
                 delete_option(self::OPT_OVERVIEW_SCAN);
-                $this->rebuild_index();
-                if ($this->last_rebuild_error !== '') {
-                    echo '<div class="notice notice-error"><p>' . esc_html($this->last_rebuild_error) . '</p></div>';
-                } else {
-                    echo '<div class="notice notice-success"><p>' . esc_html__('Database purged. Index rebuilt.', 'beeclear-smart-link-manager') . '</p></div>';
-                    $this->log_activity(__('Database purged and index rebuilt from dashboard.', 'beeclear-smart-link-manager'));
-                }
+                $this->schedule_index_rebuild();
+                $this->log_activity(__('Database purged and index rebuild triggered from dashboard.', 'beeclear-smart-link-manager'));
+                echo '<div class="notice notice-success"><p>' . esc_html__('Database purged. Index rebuild scheduled.', 'beeclear-smart-link-manager') . '</p></div>';
             }
             if (isset($_POST['beeclear_ilm_reset_global_settings']) && check_admin_referer(self::NONCE, self::NONCE)) {
                 $defaults = array(
@@ -4214,7 +4225,7 @@ jQuery(function($){
                 wp_send_json_error(array('message' => __('Access denied.', 'beeclear-smart-link-manager')));
             }
 
-            $this->rebuild_index();
+            $this->schedule_index_rebuild();
             $settings = get_option(self::OPT_SETTINGS, array());
             $pts = !empty($settings['process_post_types']) ? (array) $settings['process_post_types'] : array('post', 'page');
             $ids = $this->collect_overview_scan_ids($pts);
@@ -4305,16 +4316,10 @@ jQuery(function($){
             if (!current_user_can('manage_options'))
                 return;
 
-            $this->rebuild_index();
-
             if (isset($_POST['beeclear_ilm_reindex_now']) && check_admin_referer(self::NONCE, self::NONCE)) {
-                $index = $this->rebuild_index();
-                if ($this->last_rebuild_error !== '') {
-                    echo '<div class="notice notice-error"><p>' . esc_html($this->last_rebuild_error) . '</p></div>';
-                } else {
-                    echo '<div class="notice notice-success"><p>' . esc_html__('Index rebuilt. Scan completed.', 'beeclear-smart-link-manager') . '</p></div>';
-                    $this->log_activity(__('Index rebuilt from overview.', 'beeclear-smart-link-manager'));
-                }
+                $this->schedule_index_rebuild();
+                $this->log_activity(__('Index rebuild triggered from overview.', 'beeclear-smart-link-manager'));
+                echo '<div class="notice notice-success"><p>' . esc_html__('Index rebuild scheduled.', 'beeclear-smart-link-manager') . '</p></div>';
             }
 
             if (isset($_POST['beeclear_ilm_clear_data']) && check_admin_referer(self::NONCE, self::NONCE)) {
@@ -4323,13 +4328,9 @@ jQuery(function($){
                 update_option(self::OPT_EXTERNAL_MAP, array(), false);
                 delete_option(self::OPT_OVERVIEW_SCAN_SUMMARY);
                 delete_option(self::OPT_OVERVIEW_SCAN);
-                $this->rebuild_index();
-                if ($this->last_rebuild_error !== '') {
-                    echo '<div class="notice notice-error"><p>' . esc_html($this->last_rebuild_error) . '</p></div>';
-                } else {
-                    echo '<div class="notice notice-success"><p>' . esc_html__('Data cleared and index rebuilt.', 'beeclear-smart-link-manager') . '</p></div>';
-                    $this->log_activity(__('Data cleared and index rebuilt from overview.', 'beeclear-smart-link-manager'));
-                }
+                $this->schedule_index_rebuild();
+                $this->log_activity(__('Data cleared and index rebuild triggered from overview.', 'beeclear-smart-link-manager'));
+                echo '<div class="notice notice-success"><p>' . esc_html__('Data cleared. Index rebuild scheduled.', 'beeclear-smart-link-manager') . '</p></div>';
             }
 
             if (isset($_POST['beeclear_ilm_purge_db']) && check_admin_referer(self::NONCE, self::NONCE)) {
@@ -4337,13 +4338,9 @@ jQuery(function($){
                 delete_option(self::OPT_OVERVIEW_SCAN_SUMMARY);
                 delete_option(self::OPT_OVERVIEW_SCAN);
                 update_option(self::OPT_EXTERNAL_MAP, array(), false);
-                $this->rebuild_index();
-                if ($this->last_rebuild_error !== '') {
-                    echo '<div class="notice notice-error"><p>' . esc_html($this->last_rebuild_error) . '</p></div>';
-                } else {
-                    echo '<div class="notice notice-success"><p>' . esc_html__('Database purged. Index rebuilt.', 'beeclear-smart-link-manager') . '</p></div>';
-                    $this->log_activity(__('Database purged and index rebuilt from overview.', 'beeclear-smart-link-manager'));
-                }
+                $this->schedule_index_rebuild();
+                $this->log_activity(__('Database purged and index rebuild triggered from overview.', 'beeclear-smart-link-manager'));
+                echo '<div class="notice notice-success"><p>' . esc_html__('Database purged. Index rebuild scheduled.', 'beeclear-smart-link-manager') . '</p></div>';
             }
 
             echo '<div class="wrap"><h1>' . esc_html__('Linking overview — targets & sources', 'beeclear-smart-link-manager') . '</h1>';
@@ -4385,8 +4382,8 @@ jQuery(function($){
                 $raw_ext = isset($_POST['beeclear_ilm_ext']) ? wp_unslash($_POST['beeclear_ilm_ext']) : array(); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- Sanitized in sanitize_external_rules().
                 $clean = $this->sanitize_external_rules(is_array($raw_ext) ? $raw_ext : array());
                 update_option(self::OPT_EXT_RULES, $clean, false);
-                $this->rebuild_index();
-                echo '<div class="notice notice-success"><p>' . esc_html__('External rules saved.', 'beeclear-smart-link-manager') . '</p></div>';
+                $this->schedule_index_rebuild();
+                echo '<div class="notice notice-success"><p>' . esc_html__('External rules saved. Index rebuild scheduled.', 'beeclear-smart-link-manager') . '</p></div>';
 
                 $settings = get_option(self::OPT_SETTINGS, array());
                 if (!empty($settings['auto_scan_on_external'])) {
@@ -4664,9 +4661,9 @@ jQuery(function($){
                             }
                         }
                     }
-                    $idx = $this->rebuild_index();
-                    echo '<div class="notice notice-success"><p>' . esc_html__('Imported successfully and index rebuilt.', 'beeclear-smart-link-manager') . '</p></div>';
-                    $this->log_activity(__('Import finished and index rebuilt.', 'beeclear-smart-link-manager'));
+                    $this->schedule_index_rebuild();
+                    echo '<div class="notice notice-success"><p>' . esc_html__('Imported successfully. Index rebuild scheduled.', 'beeclear-smart-link-manager') . '</p></div>';
+                    $this->log_activity(__('Import finished and index rebuild triggered.', 'beeclear-smart-link-manager'));
                 } else {
                     echo '<div class="notice notice-error"><p>' . esc_html__('Invalid JSON.', 'beeclear-smart-link-manager') . '</p></div>';
                 }
