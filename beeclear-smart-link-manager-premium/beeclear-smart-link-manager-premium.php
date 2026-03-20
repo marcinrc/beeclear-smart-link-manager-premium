@@ -15,6 +15,9 @@
  * Requires at least: 5.8
  * Requires PHP: 7.4
  */
+if ( ! defined( 'ABSPATH' ) ) {
+    exit;
+}
 if ( !function_exists( 'bslm_fs' ) ) {
     // Create a helper function for easy SDK access.
     function bslm_fs() {
@@ -64,9 +67,6 @@ if ( !function_exists( 'bslm_fs' ) ) {
         // Signal that SDK was initiated.
         do_action( 'bslm_fs_loaded' );
     }
-}
-if ( !defined( 'ABSPATH' ) ) {
-    exit;
 }
 /**
  * Freemius-triggered uninstall cleanup.
@@ -1085,7 +1085,7 @@ if ( !class_exists( 'BeeClear_ILM', false ) ) {
                     }
                 }
             }
-            $completed_at = current_time( 'timestamp' );
+            $completed_at = time();
             return array(
                 'completed_at'   => (int) $completed_at,
                 'started_at'     => ( $started_at ? (int) $started_at : (int) $completed_at ),
@@ -1119,7 +1119,7 @@ if ( !class_exists( 'BeeClear_ILM', false ) ) {
 
         private function log_activity( $message ) {
             $entry = array(
-                'time'    => current_time( 'timestamp' ),
+                'time'    => time(),
                 'message' => (string) $message,
             );
             $log = get_option( self::OPT_ACTIVITY_LOG, array() );
@@ -1215,7 +1215,7 @@ if ( !class_exists( 'BeeClear_ILM', false ) ) {
                 'scan_running'        => __( 'Overview scan in progress…', 'beeclear-smart-link-manager-premium' ),
                 'rebuild_running'     => __( 'Index rebuild…', 'beeclear-smart-link-manager-premium' ),
             );
-            wp_add_inline_script( 'jquery', 'window.BeeClearILM = window.BeeClearILM || {}; BeeClearILM.i18n = ' . wp_json_encode( $L ) . '; BeeClearILM.nonce = "' . wp_create_nonce( self::NONCE ) . '"; BeeClearILM.settingsUrl = "' . esc_url( admin_url( 'admin.php?page=beeclear-ilm' ) ) . '";', 'before' );
+            wp_add_inline_script( 'jquery', 'window.BeeClearILM = window.BeeClearILM || {}; BeeClearILM.i18n = ' . wp_json_encode( $L ) . '; BeeClearILM.nonce = ' . wp_json_encode( wp_create_nonce( self::NONCE ) ) . '; BeeClearILM.settingsUrl = ' . wp_json_encode( esc_url( admin_url( 'admin.php?page=beeclear-ilm' ) ) ) . ';', 'before' );
             $js = <<<'JS'
 jQuery(function($){
     var L = (window.BeeClearILM && BeeClearILM.i18n) ? BeeClearILM.i18n : {};
@@ -1693,7 +1693,10 @@ JS;
                 return;
             }
             $this->admin_css_printed = true;
-            printf( '<style>%s</style>', esc_html( $this->admin_css_block() ) );
+            $handle = 'beeclear-ilm-admin-inline';
+            wp_register_style( $handle, false, array(), self::VERSION );
+            wp_enqueue_style( $handle );
+            wp_add_inline_style( $handle, $this->admin_css_block() );
         }
 
         private function admin_css_block() {
@@ -2097,7 +2100,7 @@ JS;
                 FILTER_REQUIRE_ARRAY
             );
             if ( null === $raw_input ) {
-                $raw_input = filter_input( INPUT_POST, 'beeclear_ilm_rules', FILTER_UNSAFE_RAW );
+                $raw_input = filter_input( INPUT_POST, 'beeclear_ilm_rules', FILTER_SANITIZE_FULL_SPECIAL_CHARS );
             }
             $raw_input = ( is_array( $raw_input ) ? $raw_input : (( is_string( $raw_input ) ? $raw_input : null )) );
             if ( is_string( $raw_input ) && '' !== $raw_input ) {
@@ -2253,7 +2256,7 @@ JS;
             );
             if ( null === $raw_input ) {
                 // Some submitters may send JSON-encoded rules instead of an array.
-                $raw_input = filter_input( INPUT_POST, 'beeclear_ilm_rules', FILTER_UNSAFE_RAW );
+                $raw_input = filter_input( INPUT_POST, 'beeclear_ilm_rules', FILTER_SANITIZE_FULL_SPECIAL_CHARS );
             }
             // Sanitize deeply (rules are still validated field-by-field below).
             $raw_input = ( is_array( $raw_input ) ? map_deep( $raw_input, 'sanitize_text_field' ) : sanitize_textarea_field( (string) $raw_input ) );
@@ -2367,7 +2370,7 @@ JS;
                 'ids'        => $ids,
                 'processed'  => 0,
                 'total'      => count( $ids ),
-                'started_at' => current_time( 'timestamp' ),
+                'started_at' => time(),
             );
             update_option( self::OPT_OVERVIEW_SCAN, $state, false );
             if ( $log_message !== '' ) {
@@ -3914,8 +3917,16 @@ JS;
                 return;
             }
             $ms = round( $this->autolink_timing_ms, 2 );
+            wp_enqueue_script( 'jquery' );
             /* translators: %.2f: time in milliseconds added by internal linking. */
-            printf( '<script>console.log("%s");</script>', esc_js( sprintf( __( 'Internal linking added %.2f ms to render time.', 'beeclear-smart-link-manager-premium' ), $ms ) ) );
+            $message = sprintf( __( 'Internal linking added %.2f ms to render time.', 'beeclear-smart-link-manager-premium' ), $ms );
+            $script  = sprintf( 'console.log("%s");', esc_js( $message ) );
+            $h = 'beeclear-ilm-admin-runtime';
+            if ( ! wp_script_is( $h, 'enqueued' ) ) {
+                wp_register_script( $h, '', array( 'jquery' ), self::VERSION, true );
+                wp_enqueue_script( $h );
+            }
+            wp_add_inline_script( $h, $script, 'after' );
         }
 
         public function render_dashboard() {
@@ -5144,7 +5155,7 @@ JS;
                 'ids'        => $ids,
                 'processed'  => 0,
                 'total'      => count( $ids ),
-                'started_at' => current_time( 'timestamp' ),
+                'started_at' => time(),
             );
             update_option( self::OPT_OVERVIEW_SCAN, $state, false );
             /* translators: %d: number of pages queued for the overview scan. */
