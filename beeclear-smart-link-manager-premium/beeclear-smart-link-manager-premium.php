@@ -2790,10 +2790,23 @@ JS;
                 }
                 $minlen = ( isset( $settings['min_content_length'] ) ? (int) $settings['min_content_length'] : 200 );
                 $min_element_length = ( isset( $settings['min_element_length'] ) ? (int) $settings['min_element_length'] : 20 );
+                if ( !$force ) {
+                    $on_archives = !empty( $settings['process_on_archives'] );
+                    if ( !is_singular() && !$on_archives ) {
+                        return $content;
+                    }
+                }
                 global $post;
                 $bypass_min_content = false;
                 $bypass_min_element = false;
                 if ( $post instanceof WP_Post ) {
+                    $pts = ( !empty( $settings['process_post_types'] ) ? (array) $settings['process_post_types'] : array('post', 'page') );
+                    if ( !in_array( $post->post_type, $pts, true ) ) {
+                        return $content;
+                    }
+                    if ( !empty( get_post_meta( $post->ID, self::META_NO_OUT, true ) ) ) {
+                        return $content;
+                    }
                     $bypass_min_content = !empty( get_post_meta( $post->ID, self::META_BYPASS_MIN_CONTENT, true ) );
                     $bypass_min_element = !empty( get_post_meta( $post->ID, self::META_BYPASS_MIN_ELEMENT, true ) );
                 }
@@ -2811,21 +2824,6 @@ JS;
                 }
                 if ( $bypass_min_element ) {
                     $min_element_length = 0;
-                }
-                if ( !$force ) {
-                    $on_archives = !empty( $settings['process_on_archives'] );
-                    if ( !is_singular() && !$on_archives ) {
-                        return $content;
-                    }
-                }
-                if ( $post instanceof WP_Post ) {
-                    $pts = ( !empty( $settings['process_post_types'] ) ? (array) $settings['process_post_types'] : array('post', 'page') );
-                    if ( !in_array( $post->post_type, $pts, true ) ) {
-                        return $content;
-                    }
-                    if ( !empty( get_post_meta( $post->ID, self::META_NO_OUT, true ) ) ) {
-                        return $content;
-                    }
                 }
                 static $permalink_cache = array();
                 static $internal_cache = null, $external_cache = null;
