@@ -171,6 +171,12 @@ if ( !class_exists( 'BeeClear_ILM', false ) ) {
         const META_TARGET_PRIORITY = '_beeclear_ilm_target_priority';
 
         // per-post priority: higher = first to link
+        const META_BYPASS_MIN_CONTENT = '_beeclear_ilm_bypass_min_content';
+
+        // per-post flag: ignore minimum content length
+        const META_BYPASS_MIN_ELEMENT = '_beeclear_ilm_bypass_min_element';
+
+        // per-post flag: ignore minimum element length
         const NONCE = 'beeclear_ilm_nonce';
 
         const VERSION = '1.7.5';
@@ -1956,6 +1962,8 @@ JS;
                 $rules = array();
             }
             $no_out = !empty( get_post_meta( $post->ID, self::META_NO_OUT, true ) );
+            $bypass_min_content = !empty( get_post_meta( $post->ID, self::META_BYPASS_MIN_CONTENT, true ) );
+            $bypass_min_element = !empty( get_post_meta( $post->ID, self::META_BYPASS_MIN_ELEMENT, true ) );
             $max_per_target_override = get_post_meta( $post->ID, self::META_MAX_PER_TARGET, true );
             $target_priority = get_post_meta( $post->ID, self::META_TARGET_PRIORITY, true );
             echo '<p>' . esc_html__( 'Add phrases (or regex). Order matters: top has the highest priority. Case-sensitive applies only when Regex is off.', 'beeclear-smart-link-manager-premium' ) . '</p>';
@@ -2069,6 +2077,16 @@ JS;
             echo esc_html__( 'Disable autolinking from this post (no outgoing links)', 'beeclear-smart-link-manager-premium' ) . '</label>';
             echo '<p class="description">' . esc_html__( 'When enabled, the plugin will not inject internal or external links into this post content.', 'beeclear-smart-link-manager-premium' ) . '</p>';
             echo '</div>';
+            echo '<div class="ilm-metabox-field">';
+            echo '<label class="ilm-metabox-checkbox"><input type="checkbox" name="beeclear_ilm_bypass_min_content" value="1" ' . checked( $bypass_min_content, true, false ) . '> ';
+            echo esc_html__( 'Ignore "Minimum content length to process" for this post', 'beeclear-smart-link-manager-premium' ) . '</label>';
+            echo '<p class="description">' . esc_html__( 'When enabled, autolinking will run on this post regardless of its content length.', 'beeclear-smart-link-manager-premium' ) . '</p>';
+            echo '</div>';
+            echo '<div class="ilm-metabox-field">';
+            echo '<label class="ilm-metabox-checkbox"><input type="checkbox" name="beeclear_ilm_bypass_min_element" value="1" ' . checked( $bypass_min_element, true, false ) . '> ';
+            echo esc_html__( 'Ignore "Minimum element length to process" for this post', 'beeclear-smart-link-manager-premium' ) . '</label>';
+            echo '<p class="description">' . esc_html__( 'When enabled, short paragraphs, headings, and list items in this post will still be processed for autolinking.', 'beeclear-smart-link-manager-premium' ) . '</p>';
+            echo '</div>';
             echo '</div>';
             echo '</div>';
             // echo '<p><label><input type="checkbox" name="beeclear_ilm_rules_clear" value="1"> '.
@@ -2168,6 +2186,18 @@ JS;
                 update_post_meta( $post_id, self::META_NO_OUT, '1' );
             } else {
                 delete_post_meta( $post_id, self::META_NO_OUT );
+            }
+            $bypass_min_content = ( !empty( $_POST['beeclear_ilm_bypass_min_content'] ) ? '1' : '' );
+            if ( $bypass_min_content === '1' ) {
+                update_post_meta( $post_id, self::META_BYPASS_MIN_CONTENT, '1' );
+            } else {
+                delete_post_meta( $post_id, self::META_BYPASS_MIN_CONTENT );
+            }
+            $bypass_min_element = ( !empty( $_POST['beeclear_ilm_bypass_min_element'] ) ? '1' : '' );
+            if ( $bypass_min_element === '1' ) {
+                update_post_meta( $post_id, self::META_BYPASS_MIN_ELEMENT, '1' );
+            } else {
+                delete_post_meta( $post_id, self::META_BYPASS_MIN_ELEMENT );
             }
             $meta_changed = false;
             $allowed_raw = ( isset( $_POST['beeclear_ilm_allowed_elements'] ) ? sanitize_text_field( (string) wp_unslash( $_POST['beeclear_ilm_allowed_elements'] ) ) : '' );
@@ -2760,6 +2790,15 @@ JS;
                 }
                 $minlen = ( isset( $settings['min_content_length'] ) ? (int) $settings['min_content_length'] : 200 );
                 $min_element_length = ( isset( $settings['min_element_length'] ) ? (int) $settings['min_element_length'] : 20 );
+                global $post;
+                $bypass_min_content = ( $post instanceof WP_Post && !empty( get_post_meta( $post->ID, self::META_BYPASS_MIN_CONTENT, true ) ) );
+                $bypass_min_element = ( $post instanceof WP_Post && !empty( get_post_meta( $post->ID, self::META_BYPASS_MIN_ELEMENT, true ) ) );
+                if ( $bypass_min_content ) {
+                    $minlen = 0;
+                }
+                if ( $bypass_min_element ) {
+                    $min_element_length = 0;
+                }
                 $plain = wp_strip_all_tags( $content );
                 if ( function_exists( 'mb_strlen' ) ) {
                     if ( mb_strlen( $plain, 'UTF-8' ) < $minlen ) {
