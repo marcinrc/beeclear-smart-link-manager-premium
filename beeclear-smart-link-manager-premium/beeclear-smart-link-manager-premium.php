@@ -2791,23 +2791,26 @@ JS;
                 $minlen = ( isset( $settings['min_content_length'] ) ? (int) $settings['min_content_length'] : 200 );
                 $min_element_length = ( isset( $settings['min_element_length'] ) ? (int) $settings['min_element_length'] : 20 );
                 global $post;
-                $bypass_min_content = ( $post instanceof WP_Post && !empty( get_post_meta( $post->ID, self::META_BYPASS_MIN_CONTENT, true ) ) );
-                $bypass_min_element = ( $post instanceof WP_Post && !empty( get_post_meta( $post->ID, self::META_BYPASS_MIN_ELEMENT, true ) ) );
-                if ( $bypass_min_content ) {
-                    $minlen = 0;
+                $bypass_min_content = false;
+                $bypass_min_element = false;
+                if ( $post instanceof WP_Post ) {
+                    $bypass_min_content = !empty( get_post_meta( $post->ID, self::META_BYPASS_MIN_CONTENT, true ) );
+                    $bypass_min_element = !empty( get_post_meta( $post->ID, self::META_BYPASS_MIN_ELEMENT, true ) );
+                }
+                if ( !$bypass_min_content ) {
+                    $plain = wp_strip_all_tags( $content );
+                    if ( function_exists( 'mb_strlen' ) ) {
+                        if ( mb_strlen( $plain, 'UTF-8' ) < $minlen ) {
+                            return $content;
+                        }
+                    } else {
+                        if ( strlen( $plain ) < $minlen ) {
+                            return $content;
+                        }
+                    }
                 }
                 if ( $bypass_min_element ) {
                     $min_element_length = 0;
-                }
-                $plain = wp_strip_all_tags( $content );
-                if ( function_exists( 'mb_strlen' ) ) {
-                    if ( mb_strlen( $plain, 'UTF-8' ) < $minlen ) {
-                        return $content;
-                    }
-                } else {
-                    if ( strlen( $plain ) < $minlen ) {
-                        return $content;
-                    }
                 }
                 if ( !$force ) {
                     $on_archives = !empty( $settings['process_on_archives'] );
@@ -2815,7 +2818,6 @@ JS;
                         return $content;
                     }
                 }
-                global $post;
                 if ( $post instanceof WP_Post ) {
                     $pts = ( !empty( $settings['process_post_types'] ) ? (array) $settings['process_post_types'] : array('post', 'page') );
                     if ( !in_array( $post->post_type, $pts, true ) ) {
