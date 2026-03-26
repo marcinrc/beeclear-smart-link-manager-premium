@@ -1290,37 +1290,44 @@ jQuery(function($){
     function pollScanStatus(){
         if(scanPolling) return;
         scanPolling = true;
-        $.post(ajaxurl,{action:'beeclear_ilm_scan_status', _ajax_nonce: scanNonce}, function(resp){
-            scanPolling = false;
-            if(!resp || !resp.success || !resp.data){ stopScanPoll(); return; }
-            var d = resp.data;
-            if(d.done){
-                removeAdminBarScan();
-                stopScanPoll();
-                /* update settings-page UI if visible */
-                var $scanSummary = $('#beeclear-ilm-scan-summary');
-                var $scanLabel = $('#beeclear-ilm-progress .beeclear-progress__label');
-                var $scanBar = $('#beeclear-ilm-progress .beeclear-progress__bar');
-                var $scanBtn = $('#beeclear-ilm-start-overview-scan');
-                if($scanBar.length) $scanBar.css('width', '100%');
-                if($scanLabel.length) $scanLabel.text(scanMessages.done);
-                if($scanBtn.length) $scanBtn.prop('disabled', false);
-                if(d.summary_html && $scanSummary.length) $scanSummary.html(d.summary_html);
-                return;
-            }
-            var pct = d.total ? Math.round((d.processed / d.total) * 100) : 0;
-            pct = Math.max(0, Math.min(100, pct));
-            updateAdminBarScan(pct);
-            /* also update settings-page progress bar if visible */
-            var $pgBar = $('#beeclear-ilm-progress .beeclear-progress__bar');
-            var $pgLabel = $('#beeclear-ilm-progress .beeclear-progress__label');
-            var $pgWrap = $('#beeclear-ilm-progress');
-            if($pgBar.length){
-                $pgWrap.removeAttr('hidden').css('display', 'block');
-                $pgBar.css('width', pct + '%');
-                $pgLabel.text(pct + '% — ' + d.processed + '/' + d.total);
-            }
-        }).fail(function(){ scanPolling = false; });
+        $.ajax({
+            url: ajaxurl,
+            type: 'POST',
+            data: {action:'beeclear_ilm_scan_status', _ajax_nonce: scanNonce},
+            timeout: 15000,
+            success: function(resp){
+                scanPolling = false;
+                if(!resp || !resp.success || !resp.data){ stopScanPoll(); return; }
+                var d = resp.data;
+                if(d.done){
+                    removeAdminBarScan();
+                    stopScanPoll();
+                    /* update settings-page UI if visible */
+                    var $scanSummary = $('#beeclear-ilm-scan-summary');
+                    var $scanLabel = $('#beeclear-ilm-progress .beeclear-progress__label');
+                    var $scanBar = $('#beeclear-ilm-progress .beeclear-progress__bar');
+                    var $scanBtn = $('#beeclear-ilm-start-overview-scan');
+                    if($scanBar.length) $scanBar.css('width', '100%');
+                    if($scanLabel.length) $scanLabel.text(scanMessages.done);
+                    if($scanBtn.length) $scanBtn.prop('disabled', false);
+                    if(d.summary_html && $scanSummary.length) $scanSummary.html(d.summary_html);
+                    return;
+                }
+                var pct = d.total ? Math.round((d.processed / d.total) * 100) : 0;
+                pct = Math.max(0, Math.min(100, pct));
+                updateAdminBarScan(pct);
+                /* also update settings-page progress bar if visible */
+                var $pgBar = $('#beeclear-ilm-progress .beeclear-progress__bar');
+                var $pgLabel = $('#beeclear-ilm-progress .beeclear-progress__label');
+                var $pgWrap = $('#beeclear-ilm-progress');
+                if($pgBar.length){
+                    $pgWrap.removeAttr('hidden').css('display', 'block');
+                    $pgBar.css('width', pct + '%');
+                    $pgLabel.text(pct + '% — ' + d.processed + '/' + d.total);
+                }
+            },
+            error: function(){ scanPolling = false; }
+        });
     }
 
     function startScanPoll(){
@@ -1369,19 +1376,26 @@ jQuery(function($){
     function pollRebuildStatus(){
         if(rebuildPolling) return;
         rebuildPolling = true;
-        $.post(ajaxurl,{action:'beeclear_ilm_rebuild_status', _ajax_nonce: scanNonce}, function(resp){
-            rebuildPolling = false;
-            if(!resp || !resp.success || !resp.data){ stopRebuildPoll(); removeAdminBarRebuild(); return; }
-            var d = resp.data;
-            if(d.done){
-                removeAdminBarRebuild();
-                stopRebuildPoll();
-                return;
-            }
-            var pct = d.total ? Math.round((d.processed / d.total) * 100) : 0;
-            pct = Math.max(0, Math.min(100, pct));
-            updateAdminBarRebuild(pct);
-        }).fail(function(){ rebuildPolling = false; });
+        $.ajax({
+            url: ajaxurl,
+            type: 'POST',
+            data: {action:'beeclear_ilm_rebuild_status', _ajax_nonce: scanNonce},
+            timeout: 15000,
+            success: function(resp){
+                rebuildPolling = false;
+                if(!resp || !resp.success || !resp.data){ stopRebuildPoll(); removeAdminBarRebuild(); return; }
+                var d = resp.data;
+                if(d.done){
+                    removeAdminBarRebuild();
+                    stopRebuildPoll();
+                    return;
+                }
+                var pct = d.total ? Math.round((d.processed / d.total) * 100) : 0;
+                pct = Math.max(0, Math.min(100, pct));
+                updateAdminBarRebuild(pct);
+            },
+            error: function(){ rebuildPolling = false; }
+        });
     }
 
     function startRebuildPoll(){
