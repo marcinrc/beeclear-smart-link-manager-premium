@@ -1611,8 +1611,8 @@ jQuery(function($){
 
             /* Metabox settings */
             .ilm-metabox-settings-grid{display:grid;grid-template-columns:1fr;gap:14px;margin:12px 0}
-            .ilm-metabox-card{background:#fff;border:1px solid #e2e5ea;border-radius:10px;padding:14px 16px;box-shadow:0 1px 2px rgba(0,0,0,.04)}
-            .ilm-metabox-title{margin:0 0 10px;font-size:15px;display:flex;align-items:center;gap:6px}
+            .ilm-metabox-card{background:#fff;border:1px solid #e2e5ea;border-radius:10px;padding:14px 16px;box-shadow:0 1px 2px rgba(0,0,0,.04);display:grid;grid-template-columns:1fr 1fr;gap:0 14px}
+            .ilm-metabox-title{margin:0 0 10px;font-size:15px;display:flex;align-items:center;gap:6px;grid-column:1/-1}
             .ilm-metabox-field{display:flex;flex-direction:column;gap:6px;margin-bottom:12px}
             .ilm-metabox-label{font-weight:600;color:#1d2327}
             .ilm-metabox-checkbox{display:flex;gap:8px;align-items:center;font-weight:500}
@@ -1634,6 +1634,7 @@ jQuery(function($){
             #beeclear-ilm-rules-list .ilm-context-field.hidden{display:none}
             @media (max-width:782px){
                 .ilm-metabox-settings-grid{grid-template-columns:1fr;gap:12px;margin:10px 0}
+                .ilm-metabox-card{grid-template-columns:1fr}
                 #beeclear-ilm-rules-list .ilm-row{grid-template-columns:1fr;align-items:stretch}
                 #beeclear-ilm-rules-list .handle{grid-row:auto;width:auto}
                 #beeclear-ilm-rules-list .ilm-rule-fields{grid-column:1/-1}
