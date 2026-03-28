@@ -4,7 +4,7 @@
  * Plugin Name: BeeClear Smart Link Manager - Premium
  * Plugin URI: https://beeclear.pl/en/internal-external-link-manager/
  * Description: Turn keywords into smart, automatic links—drive traffic to key posts, pages and trusted external URLs. Fine-grained rule controls (regex, case, title, aria, rel, class, per-page cap, post-type targeting), custom priorities, clear overview tables, import/export, and design tweaks. Auto-rebuild on save and one-click Rebuild index with a summary.
- * Version: 1.7.5
+ * Version: 2.0
  * Update URI: https://api.freemius.com
  * Author: BeeClear
  * Author URI: https://beeclear.pl/en/
@@ -179,7 +179,7 @@ if ( !class_exists( 'BeeClear_ILM', false ) ) {
         // per-post flag: ignore minimum element length
         const NONCE = 'beeclear_ilm_nonce';
 
-        const VERSION = '1.7.5';
+        const VERSION = '2.0';
 
         public function __construct() {
             // Prevent duplicate hook registration when the free plugin's bootstrap
