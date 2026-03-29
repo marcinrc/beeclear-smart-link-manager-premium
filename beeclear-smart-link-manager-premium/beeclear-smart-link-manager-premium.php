@@ -3957,6 +3957,128 @@ JS;
             $css_block = "/* BeeClear ILM default styles */\n.beeclear-ilm-link { text-decoration: underline; }\n.beeclear-ilm-link--highlight { font-weight: bold; }\n";
             wp_enqueue_style( $handle );
             wp_add_inline_style( $handle, $css_block );
+
+            // Admin bar progress polling for logged-in admins on the frontend.
+            if ( is_admin_bar_showing() && current_user_can( 'manage_options' ) ) {
+                $has_scan    = ! empty( get_option( self::OPT_OVERVIEW_SCAN, array() ) );
+                $rb_state    = get_option( self::OPT_REBUILD_STATE, array() );
+                $has_rebuild = ! empty( $rb_state ) && isset( $rb_state['total'] );
+
+                if ( $has_scan || $has_rebuild ) {
+                    wp_enqueue_script( 'jquery' );
+
+                    $nonce       = wp_create_nonce( self::NONCE );
+                    $settings_url = esc_url( admin_url( 'admin.php?page=beeclear-ilm' ) );
+                    $scan_running_label   = esc_js( __( 'Overview scan in progress…', 'beeclear-smart-link-manager-premium' ) );
+                    $rebuild_running_label = esc_js( __( 'Index rebuild…', 'beeclear-smart-link-manager-premium' ) );
+
+                    $ajax_url = esc_url( admin_url( 'admin-ajax.php' ) );
+
+                    $js = <<<JS
+jQuery(function($){
+    var ajaxurl = (typeof window.ajaxurl !== 'undefined') ? window.ajaxurl : '{$ajax_url}';
+    var scanNonce = '{$nonce}';
+    var settingsUrl = '{$settings_url}';
+    var scanRunningLabel = '{$scan_running_label}';
+    var rebuildRunningLabel = '{$rebuild_running_label}';
+
+    function updateAdminBarScan(percent){
+        var \$item = \$('#wp-admin-bar-beeclear-ilm-scan');
+        if(!\$item.length){
+            var \$menu = \$('#wp-admin-bar-root-default');
+            if(!\$menu.length) return;
+            \$item = \$('<li>', {id: 'wp-admin-bar-beeclear-ilm-scan'}).append(
+                \$('<a>', {'class': 'ab-item', href: settingsUrl || '#'}).html(
+                    '<span class="beeclear-adminbar-scan-label"></span>' +
+                    '<span class="beeclear-adminbar-scan-track" style="display:inline-block;width:60px;height:10px;background:#455a64;border-radius:3px;margin-left:6px;vertical-align:middle;overflow:hidden;">' +
+                    '<span class="beeclear-adminbar-scan-bar" style="display:block;height:100%;width:0%;background:#76c442;border-radius:3px;transition:width .3s;"></span>' +
+                    '</span>'
+                )
+            );
+            \$menu.append(\$item);
+        }
+        var label = scanRunningLabel + ' ' + percent + '%';
+        \$item.find('.beeclear-adminbar-scan-label').text(label);
+        \$item.find('.beeclear-adminbar-scan-bar').css('width', percent + '%');
+    }
+    function removeAdminBarScan(){ \$('#wp-admin-bar-beeclear-ilm-scan').remove(); }
+
+    var scanPollTimer = null, scanPolling = false;
+    function pollScanStatus(){
+        if(scanPolling) return;
+        scanPolling = true;
+        \$.ajax({
+            url: ajaxurl, type: 'POST',
+            data: {action:'beeclear_ilm_scan_status', _ajax_nonce: scanNonce},
+            timeout: 15000,
+            success: function(resp){
+                scanPolling = false;
+                if(!resp || !resp.success || !resp.data){ stopScanPoll(); return; }
+                var d = resp.data;
+                if(d.done){ removeAdminBarScan(); stopScanPoll(); return; }
+                var pct = d.total ? Math.round((d.processed / d.total) * 100) : 0;
+                pct = Math.max(0, Math.min(100, pct));
+                updateAdminBarScan(pct);
+            },
+            error: function(){ scanPolling = false; }
+        });
+    }
+    function startScanPoll(){ if(scanPollTimer) return; pollScanStatus(); scanPollTimer = setInterval(pollScanStatus, 3000); }
+    function stopScanPoll(){ if(scanPollTimer){ clearInterval(scanPollTimer); scanPollTimer = null; } }
+    if(\$('#wp-admin-bar-beeclear-ilm-scan').length){ startScanPoll(); }
+
+    function updateAdminBarRebuild(percent){
+        var \$item = \$('#wp-admin-bar-beeclear-ilm-rebuild');
+        if(!\$item.length){
+            var \$menu = \$('#wp-admin-bar-root-default');
+            if(!\$menu.length) return;
+            \$item = \$('<li>', {id: 'wp-admin-bar-beeclear-ilm-rebuild'}).append(
+                \$('<a>', {'class': 'ab-item', href: settingsUrl || '#'}).html(
+                    '<span class="beeclear-adminbar-rebuild-label"></span>' +
+                    '<span class="beeclear-adminbar-rebuild-track" style="display:inline-block;width:60px;height:10px;background:#455a64;border-radius:3px;margin-left:6px;vertical-align:middle;overflow:hidden;">' +
+                    '<span class="beeclear-adminbar-rebuild-bar" style="display:block;height:100%;width:0%;background:#2196f3;border-radius:3px;transition:width .3s;"></span>' +
+                    '</span>'
+                )
+            );
+            \$menu.append(\$item);
+        }
+        var label = rebuildRunningLabel + ' ' + percent + '%';
+        \$item.find('.beeclear-adminbar-rebuild-label').text(label);
+        \$item.find('.beeclear-adminbar-rebuild-bar').css('width', percent + '%');
+    }
+    function removeAdminBarRebuild(){ \$('#wp-admin-bar-beeclear-ilm-rebuild').remove(); }
+
+    var rebuildPollTimer = null, rebuildPolling = false;
+    function pollRebuildStatus(){
+        if(rebuildPolling) return;
+        rebuildPolling = true;
+        \$.ajax({
+            url: ajaxurl, type: 'POST',
+            data: {action:'beeclear_ilm_rebuild_status', _ajax_nonce: scanNonce},
+            timeout: 15000,
+            success: function(resp){
+                rebuildPolling = false;
+                if(!resp || !resp.success || !resp.data){ stopRebuildPoll(); removeAdminBarRebuild(); return; }
+                var d = resp.data;
+                if(d.done){ removeAdminBarRebuild(); stopRebuildPoll(); return; }
+                var pct = d.total ? Math.round((d.processed / d.total) * 100) : 0;
+                pct = Math.max(0, Math.min(100, pct));
+                updateAdminBarRebuild(pct);
+            },
+            error: function(){ rebuildPolling = false; }
+        });
+    }
+    function startRebuildPoll(){ if(rebuildPollTimer) return; pollRebuildStatus(); rebuildPollTimer = setInterval(pollRebuildStatus, 3000); }
+    function stopRebuildPoll(){ if(rebuildPollTimer){ clearInterval(rebuildPollTimer); rebuildPollTimer = null; } }
+    if(\$('#wp-admin-bar-beeclear-ilm-rebuild').length){ startRebuildPoll(); }
+});
+JS;
+                    $js_handle = 'beeclear-ilm-adminbar-poll';
+                    wp_register_script( $js_handle, '', array( 'jquery' ), self::VERSION, true );
+                    wp_enqueue_script( $js_handle );
+                    wp_add_inline_script( $js_handle, $js, 'after' );
+                }
+            }
         }
 
         public function render_timing_log_script() {
