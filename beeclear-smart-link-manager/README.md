@@ -1,49 +1,57 @@
-# Internal & External Link Manager (BeeClear)
+# BeeClear Smart Link Manager
 
-**Version:** 1.7.5  
+**Version:** 2.0  
 **Author:** BeeClear  
-**License:** GNU General Public License v2.0  
+**License:** GPLv2 or later  
 **Requires WordPress:** 5.8+  
-**Requires PHP:** 7.4+
+**Requires PHP:** 7.4+  
+**Tested up to:** WordPress 6.9
 
 ## Description
 
-Internal & External Link Manager (BeeClear) is a premium WordPress plugin that automatically links defined phrases or patterns within your website, improving internal linking structure and SEO efficiency. It supports both internal and external linking with advanced configuration options.
+BeeClear Smart Link Manager automatically injects internal links into your content at render time based on keyword rules you define. Links are never saved into post content — they are applied dynamically through the `the_content` filter, so the database stays clean and all changes are instantly reversible.
 
 ## Features
 
-- Internal and external linking with rule-based configuration  
-- Regex and case sensitivity options  
-- rel, title, aria-label, and class attributes  
-- Per-page link limits  
-- Automatic index rebuilding on post updates  
-- Manual rebuild option  
-- Import/export of rules  
-- Compatible with Gutenberg and classic editor  
-- Uses native WordPress APIs without altering content directly  
+- Rule-based internal linking with phrase/token syntax and case-sensitivity control
+- Full attribute control: `rel`, `title`, `aria-label`, `class`
+- Per-page link limits
+- One-click manual index rebuild with live summary
+- Automatic index rebuild on post save
+- Import / export of rule sets
+- Per-post metabox for individual overrides
+- Gutenberg and Classic Editor compatible
+- Zero HTTP requests during scanning — uses WP_Query and WordPress options internally
 
 ## Installation
 
-1. Upload the plugin ZIP file via **Plugins → Add New → Upload Plugin**.  
-2. Activate **Internal & External Link Manager (BeeClear)**.  
-3. Configure settings under **Internal & External Link Manager (BeeClear)** in the admin panel.  
-4. Add internal linking rules to posts or pages as needed.  
+1. Upload the plugin ZIP via **Plugins → Add New → Upload Plugin**, or unpack and copy the `beeclear-smart-link-manager` folder to `/wp-content/plugins/`.
+2. Activate **BeeClear Smart Link Manager** in the Plugins screen.
+3. Open **BeeClear Smart Link Manager** in the admin menu, add your rules, and click **Rebuild Index**.
 
 ## License
 
-This plugin is licensed under the **GNU General Public License v2.0**.  
-You may use, modify, and distribute it under the same terms.  
+This plugin is licensed under the **GNU General Public License v2.0 or later**.  
+You may use, modify, and distribute it under the same terms.
 
 ## Changelog
 
+### 2.0
+- Refactored index build to use WP_Query internally (no loopback HTTP requests)
+- Background scanning via WP-Cron with batch processing
+- Lightweight AJAX status polling replaces high-frequency request model
+
+### 1.8
+- Fixed invalid HTML in admin column output
+- Removed duplicate `admin_enqueue_scripts` hook registration
+- Improved promo notice wording
+- Removed error suppression from `preg_match` call
+
 ### 1.7.5
-- Improved admin interface and sortable rule tables  
-- Optimized rebuild process and link mapping  
-- Enhanced regex processing  
-- Fixed minor bugs and performance issues  
+- First public release
 
 ## Support
 
-For support or licensing information, visit [https://beeclear.pl](https://beeclear.pl) or contact **info@beeclear.pl**.  
+For support or more information, visit [beeclear.pl](https://beeclear.pl) or contact **info@beeclear.pl**.
 
 © BeeClear
