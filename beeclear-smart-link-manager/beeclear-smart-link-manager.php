@@ -67,6 +67,7 @@ if (!class_exists('BeeClear_ILM', false)):
         const OPT_OVERVIEW_SCAN_SUMMARY = 'beeclear_ilm_overview_scan_summary'; // last overview scan summary
         const OPT_ACTIVITY_LOG = 'beeclear_ilm_activity_log';   // recent maintenance/scan logs
         const OPT_REBUILD_STATE = 'beeclear_ilm_rebuild_state'; // background index rebuild state
+        const OPT_REBUILD_CHUNK_PREFIX = 'beeclear_ilm_rebuild_chunk_'; // temporary async rebuild chunks
         const OPT_DBVER = 'beeclear_ilm_db_version';     // migration marker
         const OPT_PROMO_START = 'beeclear_ilm_promo_start';
         const META_RULES = '_beeclear_ilm_rules';         // per-post internal rules
@@ -145,10 +146,10 @@ if (!class_exists('BeeClear_ILM', false)):
             return is_plugin_active('beeclear-smart-link-manager-premium/beeclear-smart-link-manager-premium.php');
         }
 
-        public function activate()
+        private function get_default_settings()
         {
-            $defaults = array(
-                'rel' => 'nofollow',
+            return array(
+                'rel' => '',
                 'title_mode' => 'phrase',
                 'title_custom' => '',
                 'aria_mode' => 'phrase',
@@ -164,13 +165,56 @@ if (!class_exists('BeeClear_ILM', false)):
                 'clean_on_deactivation' => false,
                 'process_on_archives' => false,
                 'skip_elements_internal' => '',
+                'skip_elements_external' => '',
                 'cross_inline' => false,
                 'log_internal_timing' => false,
-                'auto_scan_on_save' => false,
-                'auto_scan_on_external' => false,
+                'auto_scan_on_save' => true,
                 'activity_log_limit' => '',
-                'scan_pages_per_second' => 1,
+                'scan_pages_per_second' => 5,
             );
+        }
+
+        private function normalize_text_setting($value)
+        {
+            if (!is_string($value)) {
+                return $value;
+            }
+
+            $trimmed = trim($value);
+            if ($trimmed === '""' || $trimmed === "''") {
+                return '';
+            }
+
+            return $value;
+        }
+
+        private function normalize_settings($settings)
+        {
+            if (!is_array($settings)) {
+                return $this->get_default_settings();
+            }
+
+            foreach (array(
+                'rel',
+                'title_custom',
+                'aria_custom',
+                'default_class',
+                'link_template',
+                'skip_elements_internal',
+                'skip_elements_external',
+                'activity_log_limit',
+            ) as $key) {
+                if (array_key_exists($key, $settings)) {
+                    $settings[$key] = $this->normalize_text_setting($settings[$key]);
+                }
+            }
+
+            return $settings;
+        }
+
+        public function activate()
+        {
+            $defaults = $this->get_default_settings();
             add_option(self::OPT_SETTINGS, $defaults, '', false);
             add_option(self::OPT_INDEX, array(), '', false);
             add_option(self::OPT_EXT_RULES, array(), '', false);
@@ -257,9 +301,7 @@ if (!class_exists('BeeClear_ILM', false)):
                     $settings['skip_elements_external'] = '';
                 if (!isset($settings['cross_inline']))
                     $settings['cross_inline'] = false;
-                if (!isset($settings['auto_scan_on_external']))
-                    $settings['auto_scan_on_external'] = false;
-                update_option(self::OPT_SETTINGS, $settings, false);
+                update_option(self::OPT_SETTINGS, $this->normalize_settings($settings), false);
 
                 try {
                     $post_types = get_post_types(array('public' => true), 'names');
@@ -338,6 +380,8 @@ if (!class_exists('BeeClear_ILM', false)):
                 return;
             if ($nonce === '' || !wp_verify_nonce($nonce, 'beeclear_ilm_group-options'))
                 return;
+            if (empty($_POST['beeclear_ilm_save_rebuild']))
+                return;
 
             $this->schedule_index_rebuild();
             $this->log_activity(__('Index rebuild scheduled after saving global settings.', 'beeclear-smart-link-manager'));
@@ -367,21 +411,21 @@ if (!class_exists('BeeClear_ILM', false)):
     $out = array();
 
     // Basic text fields
-    $out['rel'] = isset($in['rel']) ? sanitize_text_field($in['rel']) : '';
+    $out['rel'] = isset($in['rel']) ? sanitize_text_field($this->normalize_text_setting($in['rel'])) : '';
 
     $allowed_modes = array('none', 'phrase', 'post_title', 'custom');
 
     $title_mode = isset($in['title_mode']) ? $in['title_mode'] : 'phrase';
     $out['title_mode'] = in_array($title_mode, $allowed_modes, true) ? $title_mode : 'phrase';
 
-    $out['title_custom'] = isset($in['title_custom']) ? sanitize_text_field($in['title_custom']) : '';
+    $out['title_custom'] = isset($in['title_custom']) ? sanitize_text_field($this->normalize_text_setting($in['title_custom'])) : '';
 
     $aria_mode = isset($in['aria_mode']) ? $in['aria_mode'] : 'phrase';
     $out['aria_mode'] = in_array($aria_mode, $allowed_modes, true) ? $aria_mode : 'phrase';
 
-    $out['aria_custom'] = isset($in['aria_custom']) ? sanitize_text_field($in['aria_custom']) : '';
+    $out['aria_custom'] = isset($in['aria_custom']) ? sanitize_text_field($this->normalize_text_setting($in['aria_custom'])) : '';
 
-    $out['default_class'] = isset($in['default_class']) ? sanitize_html_class($in['default_class']) : '';
+    $out['default_class'] = isset($in['default_class']) ? sanitize_html_class($this->normalize_text_setting($in['default_class'])) : '';
 
     // Numeric fields
     $out['max_per_target']     = max(0, intval(isset($in['max_per_target']) ? $in['max_per_target'] : 1));
@@ -397,7 +441,7 @@ if (!class_exists('BeeClear_ILM', false)):
 
     // Safe link_template: enforce {url} and {text}, allow only <a> with safe attributes.
     $default_tpl = '<a href="{url}"{rel}{title}{aria}{class}>{text}</a>';
-    $tpl         = isset($in['link_template']) ? (string) $in['link_template'] : $default_tpl;
+    $tpl         = isset($in['link_template']) ? (string) $this->normalize_text_setting($in['link_template']) : $default_tpl;
 
     if (false === strpos($tpl, '{url}') || false === strpos($tpl, '{text}')) {
         $tpl = $default_tpl;
@@ -451,17 +495,16 @@ if (!class_exists('BeeClear_ILM', false)):
     $out['clean_on_uninstall']    = !empty($in['clean_on_uninstall']);
     $out['clean_on_deactivation'] = !empty($in['clean_on_deactivation']);
     $out['process_on_archives']   = !empty($in['process_on_archives']);
-    $out['auto_scan_on_save']     = !empty($in['auto_scan_on_save']);
-    $out['auto_scan_on_external'] = !empty($in['auto_scan_on_external']);
+    $out['auto_scan_on_save'] = !empty($in['auto_scan_on_save']);
 
     // Skip elements
-    $tags_i = $this->parse_tag_list(isset($in['skip_elements_internal']) ? $in['skip_elements_internal'] : '');
+    $tags_i = $this->parse_tag_list(isset($in['skip_elements_internal']) ? $this->normalize_text_setting($in['skip_elements_internal']) : '');
     $out['skip_elements_internal'] = implode(', ', $tags_i);
 
     $out['cross_inline']        = !empty($in['cross_inline']);
     $out['log_internal_timing'] = !empty($in['log_internal_timing']);
 
-    $log_limit_raw            = isset($in['activity_log_limit']) ? trim((string) $in['activity_log_limit']) : '';
+    $log_limit_raw            = isset($in['activity_log_limit']) ? trim((string) $this->normalize_text_setting($in['activity_log_limit'])) : '';
     $out['activity_log_limit'] = ($log_limit_raw === '') ? '' : max(1, intval($log_limit_raw));
 
     $out['scan_pages_per_second'] = max(1, min(20, intval(isset($in['scan_pages_per_second']) ? $in['scan_pages_per_second'] : 1)));
@@ -530,6 +573,101 @@ if (!class_exists('BeeClear_ILM', false)):
             return $clean;
         }
 
+        private function sanitize_imported_post_rules($rules)
+        {
+            if (!is_array($rules)) {
+                return array();
+            }
+            $clean = array();
+            foreach ($rules as $rule) {
+                if (!is_array($rule)) {
+                    continue;
+                }
+                $phrase = isset($rule['phrase']) ? sanitize_text_field(trim((string) $rule['phrase'])) : '';
+                if ($phrase === '') {
+                    continue;
+                }
+                $clean[] = array(
+                    'phrase' => $phrase,
+                    'regex' => false,
+                    'case' => !empty($rule['case']),
+                    'context' => array(),
+                    'context_regex' => false,
+                    'context_case' => false,
+                );
+            }
+            return $clean;
+        }
+
+        private function export_post_payload($post_id)
+        {
+            $rules = get_post_meta($post_id, self::META_RULES, true);
+            if (!is_array($rules)) {
+                $rules = array();
+            }
+            $limit = get_post_meta($post_id, self::META_MAX_PER_TARGET, true);
+            $allowed_tags = (string) get_post_meta($post_id, self::META_ALLOWED_TAGS, true);
+            $no_out = !empty(get_post_meta($post_id, self::META_NO_OUT, true));
+            $context_enabled = !empty(get_post_meta($post_id, self::META_CONTEXT_FLAG, true));
+
+            if (!$rules && $limit === '' && $allowed_tags === '' && !$no_out && !$context_enabled) {
+                return null;
+            }
+
+            $payload = array(
+                'rules' => $rules,
+            );
+            if ($limit !== '') {
+                $payload['max_per_target'] = (int) $limit;
+            }
+            if ($allowed_tags !== '') {
+                $payload['allowed_tags'] = $allowed_tags;
+            }
+            if ($no_out) {
+                $payload['no_outgoing'] = true;
+            }
+            if ($context_enabled) {
+                $payload['context_enabled'] = true;
+            }
+            return $payload;
+        }
+
+        private function import_post_payload($post_id, $payload)
+        {
+            $rules = is_array($payload) && array_key_exists('rules', $payload) ? $payload['rules'] : $payload;
+            if (is_array($rules)) {
+                update_post_meta($post_id, self::META_RULES, $this->sanitize_imported_post_rules($rules));
+            }
+
+            $per_target_limit = is_array($payload) && array_key_exists('max_per_target', $payload) ? $payload['max_per_target'] : null;
+            if ($per_target_limit === null || $per_target_limit === '') {
+                delete_post_meta($post_id, self::META_MAX_PER_TARGET);
+            } elseif (is_numeric($per_target_limit)) {
+                update_post_meta($post_id, self::META_MAX_PER_TARGET, (string) max(0, (int) $per_target_limit));
+            }
+
+            $allowed_tags = is_array($payload) && array_key_exists('allowed_tags', $payload) ? implode(', ', $this->parse_tag_list((string) $payload['allowed_tags'])) : '';
+            if ($allowed_tags === '') {
+                delete_post_meta($post_id, self::META_ALLOWED_TAGS);
+            } else {
+                update_post_meta($post_id, self::META_ALLOWED_TAGS, $allowed_tags);
+            }
+
+            $no_outgoing = is_array($payload) && !empty($payload['no_outgoing']);
+            if ($no_outgoing) {
+                update_post_meta($post_id, self::META_NO_OUT, '1');
+            } else {
+                delete_post_meta($post_id, self::META_NO_OUT);
+            }
+
+            $context_enabled = is_array($payload) && !empty($payload['context_enabled']);
+            if ($context_enabled) {
+                update_post_meta($post_id, self::META_CONTEXT_FLAG, '1');
+            } else {
+                delete_post_meta($post_id, self::META_CONTEXT_FLAG);
+            }
+        }
+
         private function parse_tag_list($str)
         {
             $str = is_string($str) ? strtolower($str) : '';
@@ -544,6 +682,96 @@ if (!class_exists('BeeClear_ILM', false)):
                     $out[$p] = true;
             }
             return array_keys($out);
+        }
+
+        private function count_publishable_posts_for_types($post_types)
+        {
+            $total = 0;
+            foreach ((array) $post_types as $post_type) {
+                $counts = wp_count_posts($post_type);
+                if ($counts && isset($counts->publish)) {
+                    $total += (int) $counts->publish;
+                }
+            }
+            return max(0, (int) $total);
+        }
+
+        private function cleanup_rebuild_chunks($rebuild_key, $chunk_count = null)
+        {
+            $rebuild_key = sanitize_key((string) $rebuild_key);
+            if ($rebuild_key === '') {
+                return;
+            }
+            $limit = ($chunk_count === null ? 0 : max(0, (int) $chunk_count));
+            if ($limit > 0) {
+                for ($i = 0; $i < $limit; $i++) {
+                    delete_option(self::OPT_REBUILD_CHUNK_PREFIX . $rebuild_key . '_' . $i);
+                }
+            }
+        }
+
+        private function get_rebuild_chunk_option_name($rebuild_key, $chunk_index)
+        {
+            return self::OPT_REBUILD_CHUNK_PREFIX . sanitize_key((string) $rebuild_key) . '_' . max(0, (int) $chunk_index);
+        }
+
+        private function load_rebuild_chunks($rebuild_key, $chunk_count)
+        {
+            $index = array();
+            $chunk_count = max(0, (int) $chunk_count);
+            for ($i = 0; $i < $chunk_count; $i++) {
+                $chunk = get_option($this->get_rebuild_chunk_option_name($rebuild_key, $i), array());
+                if (is_array($chunk) && !empty($chunk)) {
+                    $index = array_merge($index, $chunk);
+                }
+                delete_option($this->get_rebuild_chunk_option_name($rebuild_key, $i));
+            }
+            return $index;
+        }
+
+        private function query_rebuild_batch_ids($post_types, $last_id, $batch_size)
+        {
+            global $wpdb;
+
+            $last_id = max(0, (int) $last_id);
+            $batch_size = max(1, (int) $batch_size);
+            $where_filter = function ($where) use ($wpdb, $last_id) {
+                if ($last_id > 0) {
+                    $where .= $wpdb->prepare(" AND {$wpdb->posts}.ID > %d", $last_id);
+                }
+                return $where;
+            };
+
+            add_filter('posts_where', $where_filter);
+            $q = new WP_Query(array(
+                'post_type'      => (array) $post_types,
+                'post_status'    => 'publish',
+                'posts_per_page' => $batch_size,
+                'fields'         => 'ids',
+                'no_found_rows'  => true,
+                'orderby'        => 'ID',
+                'order'          => 'ASC',
+            ));
+            remove_filter('posts_where', $where_filter);
+
+            return (!is_wp_error($q) && !empty($q->posts)) ? array_values(array_map('intval', (array) $q->posts)) : array();
+        }
+
+        private function text_might_contain_phrase($text, $phrase, $case_sensitive)
+        {
+            $text = (string) $text;
+            $phrase = trim((string) $phrase);
+            if ($text === '' || $phrase === '') {
+                return false;
+            }
+            if (function_exists('mb_stripos')) {
+                return $case_sensitive
+                    ? mb_strpos($text, $phrase, 0, 'UTF-8') !== false
+                    : mb_stripos($text, $phrase, 0, 'UTF-8') !== false;
+            }
+            return $case_sensitive
+                ? strpos($text, $phrase) !== false
+                : stripos($text, $phrase) !== false;
         }
 
         private function node_in_tags($node, $tags)
@@ -1165,6 +1393,8 @@ public function admin_assets($hook)
                 'context_words' => __('Context words', 'beeclear-smart-link-manager'),
                 'context_tokens' => __('Supports token syntax (non-regex). Separate multiple entries with commas.', 'beeclear-smart-link-manager'),
                 'context_placeholder' => __('Additional words required in the same element', 'beeclear-smart-link-manager'),
+                'copy_shortcode' => __('Copy shortcode', 'beeclear-smart-link-manager'),
+                'copied' => __('Copied', 'beeclear-smart-link-manager'),
                 'scan_failed' => __('Scan failed.', 'beeclear-smart-link-manager'),
                 'scan_done' => __('Scan finished. Overview updated.', 'beeclear-smart-link-manager'),
                 'scan_prepare' => __('Preparing scan…', 'beeclear-smart-link-manager'),
@@ -1202,6 +1432,26 @@ jQuery(function($){
         $list.append(row);
     });
     $(document).on("click",".ilm-row .link-delete", function(e){ e.preventDefault(); $(this).closest(".ilm-row").remove(); });
+    $(document).on("click", ".beeclear-ilm-shortcode-chip", function(e){
+        e.preventDefault();
+        var shortcode = $(this).data("shortcode");
+        if(!shortcode){ return; }
+        var btn = this;
+        var fallbackCopy = function(text){
+            var $temp = $("<textarea>").css({position:"absolute",left:"-9999px",top:"-9999px"}).val(text).appendTo("body");
+            $temp[0].select();
+            try { document.execCommand("copy"); } catch (err) {}
+            $temp.remove();
+        };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(String(shortcode)).catch(function(){ fallbackCopy(String(shortcode)); });
+        } else {
+            fallbackCopy(String(shortcode));
+        }
+        var original = btn.getAttribute("data-label") || btn.textContent;
+        btn.textContent = L.copied || "Copied";
+        window.setTimeout(function(){ btn.textContent = original; }, 1000);
+    });
 
     // External table
     var $ext = $("#beeclear-ilm-ext-table tbody");
@@ -1608,6 +1858,9 @@ jQuery(function($){
             details > summary{cursor:pointer}
             details.ilm-tips{background:#f6f7f7;border:1px solid #e2e4e7;border-radius:6px;padding:10px 12px}
             details.ilm-tips .description{margin-top:8px}
+            .beeclear-ilm-shortcodes{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:12px 0}
+            .beeclear-ilm-shortcodes__label{font-weight:600;color:#1d2327}
+            .beeclear-ilm-shortcode-chip{display:inline-flex;align-items:center;padding:4px 8px;border:1px solid #d0d5db;border-radius:6px;background:#fff;cursor:pointer;font-size:12px;line-height:1.4}
 
             /* Metabox settings */
             .ilm-metabox-settings-grid{display:grid;grid-template-columns:1fr;gap:14px;margin:12px 0}
@@ -1797,6 +2050,27 @@ jQuery(function($){
             return $this->token_tips_html;
         }
 
+        private function render_shortcode_copy_row_html()
+        {
+            $shortcodes = array(
+                '[string]',
+                '[string:5]',
+                '[string:max5]',
+                '[string:min3]',
+                '[words]',
+                '[words:1]',
+                '[words:max2]',
+                '[words:min2]',
+            );
+            $out = '<div class="beeclear-ilm-shortcodes">';
+            $out .= '<span class="beeclear-ilm-shortcodes__label">' . esc_html__('Token examples to copy:', 'beeclear-smart-link-manager') . '</span>';
+            foreach ($shortcodes as $shortcode) {
+                $out .= '<code class="beeclear-ilm-shortcode-chip" data-label="' . esc_attr($shortcode) . '" data-shortcode="' . esc_attr($shortcode) . '" title="' . esc_attr__('Copy shortcode', 'beeclear-smart-link-manager') . '">' . esc_html($shortcode) . '</code>';
+            }
+            $out .= '</div>';
+            return $out;
+        }
+
         public function add_metabox()
         {
             $settings = get_option(self::OPT_SETTINGS, array());
@@ -1822,6 +2096,7 @@ jQuery(function($){
             echo '<p>' . esc_html__('Add phrases. Order matters: top has the highest priority.', 'beeclear-smart-link-manager') . '</p>';
 
             echo wp_kses_post($this->render_token_tips_html());
+            echo wp_kses_post($this->render_shortcode_copy_row_html());
 
             $allowed_tags_raw = get_post_meta($post->ID, self::META_ALLOWED_TAGS, true);
 
@@ -2202,24 +2477,19 @@ jQuery(function($){
 
             $settings = get_option(self::OPT_SETTINGS, array());
             $pts = !empty($settings['process_post_types']) ? (array) $settings['process_post_types'] : array('post', 'page');
-
-            $q = new WP_Query(array(
-                'post_type'      => $pts,
-                'post_status'    => 'publish',
-                'posts_per_page' => -1,
-                'fields'         => 'ids',
-                'no_found_rows'  => true,
-                'orderby'        => 'ID',
-                'order'          => 'ASC',
-            ));
-
-            $ids = (!is_wp_error($q) && !empty($q->posts)) ? (array) $q->posts : array();
+            $previous_state = get_option(self::OPT_REBUILD_STATE, array());
+            if (!empty($previous_state['rebuild_key'])) {
+                $this->cleanup_rebuild_chunks($previous_state['rebuild_key'], $previous_state['chunk_count'] ?? null);
+            }
+            $rebuild_key = sanitize_key(function_exists('wp_generate_uuid4') ? wp_generate_uuid4() : uniqid('ilm', true));
 
             $state = array(
-                'ids'        => $ids,
+                'post_types' => array_values(array_unique(array_filter(array_map('sanitize_key', $pts)))),
                 'processed'  => 0,
-                'total'      => count($ids),
-                'index'      => array(),
+                'total'      => $this->count_publishable_posts_for_types($pts),
+                'last_id'    => 0,
+                'chunk_count' => 0,
+                'rebuild_key' => $rebuild_key,
                 'started_at' => time(),
             );
             update_option(self::OPT_REBUILD_STATE, $state, false);
@@ -2242,20 +2512,26 @@ jQuery(function($){
         public function run_async_rebuild_index()
         {
             $state = get_option(self::OPT_REBUILD_STATE, array());
-            if (empty($state) || !isset($state['ids'])) {
+            if (empty($state) || !isset($state['post_types'])) {
                 $this->rebuild_index();
+                if (!empty($state['rebuild_key'])) {
+                    $this->cleanup_rebuild_chunks($state['rebuild_key'], $state['chunk_count'] ?? null);
+                }
                 delete_option(self::OPT_REBUILD_STATE);
                 return;
             }
 
-            $ids       = (array) $state['ids'];
+            $pts       = !empty($state['post_types']) ? (array) $state['post_types'] : array('post', 'page');
             $processed = isset($state['processed']) ? (int) $state['processed'] : 0;
-            $index     = isset($state['index']) ? (array) $state['index'] : array();
+            $last_id   = isset($state['last_id']) ? (int) $state['last_id'] : 0;
+            $chunk_count = isset($state['chunk_count']) ? (int) $state['chunk_count'] : 0;
+            $rebuild_key = isset($state['rebuild_key']) ? sanitize_key((string) $state['rebuild_key']) : '';
             $batch_size = 200;
 
-            $batch = array_slice($ids, $processed, $batch_size);
+            $batch = $this->query_rebuild_batch_ids($pts, $last_id, $batch_size);
             if (!empty($batch)) {
                 update_postmeta_cache($batch);
+                $batch_index = array();
                 foreach ($batch as $pid) {
                     $rules = get_post_meta($pid, self::META_RULES, true);
                     if (!is_array($rules) || empty($rules)) {
@@ -2270,7 +2546,7 @@ jQuery(function($){
                         if ($phrase === '') {
                             continue;
                         }
-                        $index[] = array(
+                        $batch_index[] = array(
                             'phrase'         => $phrase,
                             'regex'          => !empty($r['regex']),
                             'case'           => !empty($r['case']),
@@ -2281,11 +2557,18 @@ jQuery(function($){
                         );
                     }
                 }
+                if ($rebuild_key !== '') {
+                    update_option($this->get_rebuild_chunk_option_name($rebuild_key, $chunk_count), $batch_index, false);
+                    $chunk_count++;
+                }
+                $last_id = (int) end($batch);
             }
 
             $processed += count($batch);
+            $total = isset($state['total']) ? (int) $state['total'] : 0;
 
-            if ($processed >= count($ids)) {
+            if (empty($batch) || ($total > 0 && $processed >= $total)) {
+                $index = ($rebuild_key !== '') ? $this->load_rebuild_chunks($rebuild_key, $chunk_count) : array();
                 usort($index, function ($a, $b) {
                     if ($a['priority'] === $b['priority']) {
                         if ($a['target'] === $b['target'])
@@ -2300,7 +2583,8 @@ jQuery(function($){
             }
 
             $state['processed'] = $processed;
-            $state['index']     = $index;
+            $state['last_id']   = $last_id;
+            $state['chunk_count'] = $chunk_count;
             update_option(self::OPT_REBUILD_STATE, $state, false);
 
             wp_schedule_single_event(time() + 1, 'beeclear_ilm_async_rebuild_index');
@@ -2567,6 +2851,7 @@ jQuery(function($){
                         'phrase' => $phrase,
                         'regex' => !empty($rule['regex']),
                         'case' => !empty($rule['case']),
+                        'literal_prefilter' => empty($rule['regex']) && !$this->contains_tokens($phrase),
                         'target' => $target,
                         'pattern' => $pattern,
                         'url' => $permalink_cache[$target],
@@ -2693,6 +2978,9 @@ jQuery(function($){
 
                             $txt = $node->nodeValue;
                             if ($txt === '')
+                                continue;
+
+                            if (!empty($rule['literal_prefilter']) && !$this->text_might_contain_phrase($txt, $rule['phrase'], !empty($rule['case'])))
                                 continue;
 
                             $pattern = $rule['pattern'];
@@ -3587,58 +3875,13 @@ JS;
                 echo '<div class="notice notice-success"><p>' . esc_html__('Database purged. Index rebuild scheduled.', 'beeclear-smart-link-manager') . '</p></div>';
             }
             if (isset($_POST['beeclear_ilm_reset_global_settings']) && check_admin_referer(self::NONCE, self::NONCE)) {
-                $defaults = array(
-                    'rel'                    => 'nofollow',
-                    'title_mode'             => 'phrase',
-                    'title_custom'           => '',
-                    'aria_mode'              => 'phrase',
-                    'aria_custom'            => '',
-                    'default_class'          => 'beeclear-ilm-link',
-                    'max_per_target'         => 1,
-                    'max_total_per_page'     => 0,
-                    'process_post_types'     => array('post', 'page'),
-                    'min_content_length'     => 200,
-                    'min_element_length'     => 20,
-                    'link_template'          => '<a href="{url}"{rel}{title}{aria}{class}>{text}</a>',
-                    'clean_on_uninstall'     => false,
-                    'clean_on_deactivation'  => false,
-                    'process_on_archives'    => false,
-                    'skip_elements_internal' => '',
-                    'cross_inline'           => false,
-                    'log_internal_timing'    => false,
-                    'auto_scan_on_save'      => false,
-                    'auto_scan_on_external'  => false,
-                    'activity_log_limit'     => '',
-                );
+                $defaults = $this->get_default_settings();
                 update_option(self::OPT_SETTINGS, $defaults, false);
                 $settings = $defaults;
                 echo '<div class="notice notice-success"><p>' . esc_html__('Global settings restored to defaults.', 'beeclear-smart-link-manager') . '</p></div>';
             }
 
-            $s = wp_parse_args($settings, array(
-                'rel' => 'nofollow',
-                'title_mode' => 'phrase',
-                'title_custom' => '',
-                'aria_mode' => 'phrase',
-                'aria_custom' => '',
-                'default_class' => 'beeclear-ilm-link',
-                'max_per_target' => 1,
-                'max_total_per_page' => 0,
-                'process_post_types' => array('post', 'page'),
-                'min_content_length' => 200,
-                'min_element_length' => 20,
-                'link_template' => '<a href="{url}"{rel}{title}{aria}{class}>{text}</a>',
-                'clean_on_uninstall' => false,
-                'clean_on_deactivation' => false,
-                'process_on_archives' => false,
-                'skip_elements_internal' => '',
-                'skip_elements_external' => '',
-                'cross_inline' => false,
-                'log_internal_timing' => false,
-                'auto_scan_on_save' => false,
-                'auto_scan_on_external' => false,
-                'activity_log_limit' => ''
-            ));
+            $s = wp_parse_args($this->normalize_settings($settings), $this->get_default_settings());
             $summary_now = $this->summarize_index(get_option(self::OPT_INDEX, array()));
 
             echo '<div class="wrap">';
@@ -3649,7 +3892,7 @@ JS;
 
             echo '<div class="ilm-wrap">';
 
-            echo '<form method="post" action="options.php" class="beeclear-form">';
+            echo '<form method="post" action="options.php" class="beeclear-form" id="beeclear-ilm-settings-form">';
             settings_fields('beeclear_ilm_group');
 
             echo '<div class="beeclear-card">';
@@ -3691,7 +3934,7 @@ JS;
             echo '<div class="beeclear-card">';
             echo '<h3 class="ilm-section-title"><span class="dashicons dashicons-visibility" aria-hidden="true"></span>' . esc_html__('Placement & targeting', 'beeclear-smart-link-manager') . '</h3>';
             echo '<table class="form-table" role="presentation">';
-            echo '<tr><th>' . esc_html__('Skip elements (INTERNAL)', 'beeclear-smart-link-manager') . '</th><td><input type="text" name="' . esc_attr(self::OPT_SETTINGS) . '[skip_elements_internal]" value="' . esc_attr($s['skip_elements_internal']) . '" class="regular-text" placeholder="h2 - li - h4"><span class="inline-help">' . esc_html__('Do not inject INTERNAL links inside these HTML tags. Separate with dashes, commas or spaces. Example: h2 - li - h4', 'beeclear-smart-link-manager') . '</span></td></tr>';
+            echo '<tr><th>' . esc_html__('Skip elements (INTERNAL)', 'beeclear-smart-link-manager') . '</th><td><input type="text" name="' . esc_attr(self::OPT_SETTINGS) . '[skip_elements_internal]" value="' . esc_attr($s['skip_elements_internal']) . '" class="regular-text" placeholder=""><span class="inline-help">' . esc_html__('Do not inject INTERNAL links inside these HTML tags. Separate with dashes, commas or spaces. Example: h2, h4, li', 'beeclear-smart-link-manager') . '</span></td></tr>';
             echo '<tr><th>' . esc_html__('Process INTERNAL post types', 'beeclear-smart-link-manager') . '</th><td>';
             echo '<div class="ilm-checkbox-grid">';
             $pts = get_post_types(array('public' => true), 'objects');
@@ -3724,8 +3967,7 @@ JS;
             echo '<h3 class="ilm-section-title"><span class="dashicons dashicons-update" aria-hidden="true"></span>' . esc_html__('Automation & logs', 'beeclear-smart-link-manager') . '</h3>';
             echo '<table class="form-table" role="presentation">';
             echo '<tr><th>' . esc_html__('Auto-run scan after saving content', 'beeclear-smart-link-manager') . '</th><td><label><input type="checkbox" name="' . esc_attr(self::OPT_SETTINGS) . '[auto_scan_on_save]" value="1" ' . checked(!empty($s['auto_scan_on_save']), true, false) . '> ' . esc_html__('Trigger “Scan site” whenever a supported post/page is added or updated.', 'beeclear-smart-link-manager') . '</label><span class="inline-help">' . esc_html__('Runs a full overview scan after publishing updates.', 'beeclear-smart-link-manager') . '</span></td></tr>';
-            echo '<tr><th>' . esc_html__('Auto-run scan after saving external rules', 'beeclear-smart-link-manager') . '</th><td><label><input type="checkbox" name="' . esc_attr(self::OPT_SETTINGS) . '[auto_scan_on_external]" value="1" ' . checked(!empty($s['auto_scan_on_external']), true, false) . '> ' . esc_html__('Trigger “Scan site” whenever external rules are updated.', 'beeclear-smart-link-manager') . '</label><span class="inline-help">' . esc_html__('Keeps the external linking overview fresh after edits.', 'beeclear-smart-link-manager') . '</span></td></tr>';
-            echo '<tr><th>' . esc_html__('Scan speed (pages per second)', 'beeclear-smart-link-manager') . '</th><td><input type="number" min="1" max="20" step="1" name="' . esc_attr(self::OPT_SETTINGS) . '[scan_pages_per_second]" value="' . esc_attr(isset($s['scan_pages_per_second']) ? $s['scan_pages_per_second'] : 1) . '"><span class="inline-help">' . esc_html__('How many pages per second the overview scan should process. Lower values reduce server load. Default: 1.', 'beeclear-smart-link-manager') . '</span></td></tr>';
+            echo '<tr><th>' . esc_html__('Scan speed (pages per second)', 'beeclear-smart-link-manager') . '</th><td><input type="number" min="1" max="20" step="1" name="' . esc_attr(self::OPT_SETTINGS) . '[scan_pages_per_second]" value="' . esc_attr(isset($s['scan_pages_per_second']) ? $s['scan_pages_per_second'] : 5) . '"><span class="inline-help">' . esc_html__('How many pages per second the overview scan should process. Lower values reduce server load. Default: 5.', 'beeclear-smart-link-manager') . '</span></td></tr>';
             echo '<tr><th>' . esc_html__('Debug: log autolink timing', 'beeclear-smart-link-manager') . '</th><td><label><input type="checkbox" name="' . esc_attr(self::OPT_SETTINGS) . '[log_internal_timing]" value="1" ' . checked(!empty($s['log_internal_timing']), true, false) . '> ' . esc_html__('Console-log extra render time added by internal linking logic.', 'beeclear-smart-link-manager') . '</label><span class="inline-help">' . esc_html__('Shows how many milliseconds were spent in autolinking during this page load (front-end only).', 'beeclear-smart-link-manager') . '</span></td></tr>';
             echo '</table>';
             echo '</div>';
@@ -3738,11 +3980,20 @@ JS;
             echo '</table>';
             echo '</div>';
 
-            echo '<div class="beeclear-card">';
-            submit_button(__('Save and rebuild index', 'beeclear-smart-link-manager'));
-            echo '</div>';
-
             echo '</form>';
+
+            echo '<div class="beeclear-card">';
+            echo '<div class="beeclear-actions">';
+            echo '<div class="beeclear-actions__row">';
+            echo '<button type="submit" form="beeclear-ilm-settings-form" name="beeclear_ilm_save_settings" value="1" class="button button-primary">' . esc_html__('Save', 'beeclear-smart-link-manager') . '</button>';
+            echo '<button type="submit" form="beeclear-ilm-settings-form" name="beeclear_ilm_save_rebuild" value="1" class="button button-secondary">' . esc_html__('Save and rebuild index', 'beeclear-smart-link-manager') . '</button>';
+            echo '<form method="post" class="beeclear-inline-action">';
+            wp_nonce_field(self::NONCE, self::NONCE);
+            echo '<button class="button button-secondary" name="beeclear_ilm_reset_global_settings" value="1" onclick="return confirm(\'' . esc_js(__('Restore all global settings to default values?', 'beeclear-smart-link-manager')) . '\');">' . esc_html__('Restore default settings', 'beeclear-smart-link-manager') . '</button>';
+            echo '</form>';
+            echo '</div>';
+            echo '</div>';
+            echo '</div>';
 
             echo '</div>';
 
@@ -3786,12 +4037,6 @@ JS;
             echo esc_html__('Confirm full cleanup: remove internal rules (per post), external rules, link counters & index.', 'beeclear-smart-link-manager');
             echo '</label>';
             echo '<button class="button button-secondary" name="beeclear_ilm_purge_db" value="1">' . esc_html__('Purge database (ILM) & rebuild index', 'beeclear-smart-link-manager') . '</button>';
-            echo '</form>';
-
-            echo '<form method="post" class="beeclear-inline-form">';
-            wp_nonce_field(self::NONCE, self::NONCE);
-            echo '<label><input type="checkbox" name="confirm" required> ' . esc_html__('Confirm resetting all global settings to their default values.', 'beeclear-smart-link-manager') . '</label>';
-            echo '<button class="button button-secondary" name="beeclear_ilm_reset_global_settings" value="1">' . esc_html__('Reset global settings to defaults', 'beeclear-smart-link-manager') . '</button>';
             echo '</form>';
 
             echo '</div>';
@@ -5014,8 +5259,7 @@ JS;
                 return;
 
             if (isset($_POST['beeclear_ilm_import']) && check_admin_referer(self::NONCE, self::NONCE)) {
-                $json_raw = isset($_POST['beeclear_ilm_json']) ? sanitize_textarea_field(wp_unslash($_POST['beeclear_ilm_json'])) : '';
-                $json = $json_raw;
+                $json = isset($_POST['beeclear_ilm_json']) ? trim((string) wp_unslash($_POST['beeclear_ilm_json'])) : '';
                 $data = json_decode($json, true);
                 if (is_array($data)) {
                     if (isset($data['settings']))
@@ -5027,17 +5271,7 @@ JS;
                             $pid = (int) $pid;
                             if ($pid <= 0)
                                 continue;
-
-                            $rules = is_array($payload) && array_key_exists('rules', $payload) ? $payload['rules'] : $payload;
-                            if (is_array($rules))
-                                update_post_meta($pid, self::META_RULES, $rules);
-
-                            $per_target_limit = is_array($payload) && array_key_exists('max_per_target', $payload) ? $payload['max_per_target'] : null;
-                            if ($per_target_limit === null || $per_target_limit === '') {
-                                delete_post_meta($pid, self::META_MAX_PER_TARGET);
-                            } elseif (is_numeric($per_target_limit)) {
-                                update_post_meta($pid, self::META_MAX_PER_TARGET, (string) max(0, (int) $per_target_limit));
-                            }
+                            $this->import_post_payload($pid, $payload);
                         }
                     }
                     $this->schedule_index_rebuild();
@@ -5058,15 +5292,9 @@ JS;
                 if (!is_wp_error($q)) {
                     update_postmeta_cache( (array) $q->posts );
                     foreach ($q->posts as $pid) {
-                        $r = get_post_meta($pid, self::META_RULES, true);
-                        if (!is_array($r))
-                            $r = array();
-                        $limit = get_post_meta($pid, self::META_MAX_PER_TARGET, true);
-                        if ($r || $limit !== '') {
-                            $export['posts'][$pid] = array('rules' => $r);
-                            if ($limit !== '') {
-                                $export['posts'][$pid]['max_per_target'] = (int) $limit;
-                            }
+                        $payload = $this->export_post_payload($pid);
+                        if ($payload !== null) {
+                            $export['posts'][$pid] = $payload;
                         }
                     }
                 }
