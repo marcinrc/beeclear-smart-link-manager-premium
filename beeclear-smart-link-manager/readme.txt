@@ -3,7 +3,7 @@ Contributors: beeclear
 Donate link: https://beeclear.pl/en/
 Tags: internal linking, external links, autolink, seo, anchor text
 Requires at least: 5.8
-Tested up to: 6.9
+Tested up to: 6.9.4
 Requires PHP: 7.4
 Stable tag: 2.0
 License: GPLv2 or later
@@ -93,9 +93,9 @@ The plugin hooks into `the_content` filter, which most page builders respect. Co
 == Screenshots ==
 
 1. **Global settings panel** — configure post types, link limits, and index rebuild options from one central screen.
-2. **Rules list** — sortable table showing all active linking rules with inline phrase, target URL, and attribute columns.
-3. **Add / edit rule form** — define a keyword phrase, target URL, rel attribute, title, aria-label, class, and per-page cap.
-4. **Per-post metabox** — override global settings or add post-specific rules directly from the post editor.
+2. **Per-post metabox** — override global settings or add post-specific rules directly from the post editor.
+3. **Rules list** — sortable table showing all active linking rules with inline phrase, target URL, and attribute columns.
+4. **Linking details** — precise list of targets with linking.
 
 == Changelog ==
 
