@@ -23,6 +23,8 @@ beeclear-smart-link-manager-premium/
 │   ├── languages/                         # Pliki tłumaczeń
 │   ├── readme.txt
 │   └── LICENSE
+├── assets/                                # Zrzuty ekranu (WordPress.org)
+│   └── screenshot-1..4.png
 └── .github/
     └── workflows/
         └── deploy_bc.yml                  # Automatyczny deployment FTP
@@ -36,11 +38,11 @@ beeclear-smart-link-manager-premium/
 
 | Atrybut           | Wartość                       |
 |-------------------|-------------------------------|
-| Wersja            | 1.8                           |
+| Wersja            | 2.0                           |
 | Licencja          | GPLv2 or later                |
 | Wymaga WordPress  | 5.8+                          |
 | Wymaga PHP        | 7.4+                          |
-| Testowane do      | WordPress 6.9                 |
+| Testowane do      | WordPress 6.9.4               |
 | Dostępna na       | WordPress.org                 |
 
 #### Funkcje wersji FREE
@@ -61,7 +63,7 @@ beeclear-smart-link-manager-premium/
 
 | Atrybut           | Wartość                       |
 |-------------------|-------------------------------|
-| Wersja            | 1.7.5                         |
+| Wersja            | 2.0                           |
 | Licencja          | GPLv2 or later                |
 | Wymaga WordPress  | 5.8+                          |
 | Wymaga PHP        | 7.4+                          |
@@ -184,10 +186,33 @@ Użyj narzędzi import/export, aby przenosić reguły między środowiskami bez 
 
 ---
 
+## Architektura i wydajność
+
+Wtyczka działa w całości po stronie serwera — skanowanie treści i budowanie
+indeksu odbywa się przez wewnętrzne API WordPressa (`WP_Query`,
+`get_post_meta`), bez generowania zewnętrznych requestów HTTP. Eliminuje to
+ryzyko blokad przez WAF/firewall.
+
+| Akcja                          | Requesty HTTP                              | Ryzyko WAF |
+|--------------------------------|--------------------------------------------|------------|
+| Rebuild indeksu                | 0 (wewnętrzne WP_Query + get_post_meta)    | Brak       |
+| Autolink (`the_content`)       | 0 (czyta indeks z pamięci/object cache)    | Brak       |
+| Skan w tle (WP-Cron)           | 1 loopback na `wp-cron.php` per tick       | Minimalny  |
+| Polling statusu w przeglądarce | 1 AJAX co ~3 s (read-only)                 | Minimalny  |
+
+Linki **nie są zapisywane** w treści wpisów w bazie danych — są wstrzykiwane
+dynamicznie w czasie renderowania strony przez filtr `the_content` na
+podstawie skompilowanego indeksu reguł.
+
+---
+
 ## Dokumentacja techniczna
 
 Szczegółowa dokumentacja akcji wtyczki dostępna jest w:
 [`beeclear-smart-link-manager/docs/akcje-wtyczki.md`](beeclear-smart-link-manager/docs/akcje-wtyczki.md)
+
+Instrukcje dla Claude Code / agentów AI pracujących z tym repozytorium:
+[`CLAUDE.md`](CLAUDE.md)
 
 ---
 

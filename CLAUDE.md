@@ -7,19 +7,27 @@
 - **Wersja darmowa** (`beeclear-smart-link-manager/`) – publikowana na WordPress.org
 - **Wersja premium** (`beeclear-smart-link-manager-premium/`) – dystrybuowana przez Freemius SDK
 
+Obie wersje są aktualnie w **wersji 2.0**.
+
 ## Struktura projektu
 
 ```
 beeclear-smart-link-manager-premium/         # Repozytorium
-├── beeclear-smart-link-manager/             # Wtyczka DARMOWA (v1.8+)
-│   ├── beeclear-smart-link-manager.php     # Główny plik wtyczki (~4300 linii)
+├── beeclear-smart-link-manager/             # Wtyczka DARMOWA (v2.0)
+│   ├── beeclear-smart-link-manager.php     # Główny plik wtyczki (~5400 linii)
 │   ├── docs/akcje-wtyczki.md               # Dokumentacja hooków WordPress
-│   ├── README.md
+│   ├── LICENSE
 │   └── readme.txt                           # Format WordPress.org
-└── beeclear-smart-link-manager-premium/    # Wtyczka PREMIUM (v1.7.5+)
-    ├── beeclear-smart-link-manager-premium.php  # Główny plik (~4850 linii)
-    ├── readme.txt
-    └── vendor/                              # Freemius SDK (v2.x)
+├── beeclear-smart-link-manager-premium/    # Wtyczka PREMIUM (v2.0)
+│   ├── beeclear-smart-link-manager-premium.php  # Główny plik (~6130 linii)
+│   ├── languages/                           # Pliki tłumaczeń
+│   ├── readme.txt
+│   ├── LICENSE
+│   └── vendor/                              # Freemius SDK (v2.x)
+├── assets/                                  # Zrzuty ekranu (WordPress.org)
+├── .github/workflows/deploy_bc.yml          # Deployment FTP
+├── README.md                                # Dokumentacja repozytorium
+└── CLAUDE.md                                # Ten plik
 ```
 
 ## Architektura
@@ -91,7 +99,7 @@ Cały proces skanowania i budowania indeksu odbywa się **wyłącznie po stronie
 
 - **PHP:** >= 7.4
 - **WordPress:** >= 5.8
-- **Przetestowane z:** WordPress 6.9
+- **Przetestowane z:** WordPress 6.9 (free: 6.9.4, premium: 6.9)
 - **Licencja:** GPLv2+
 
 ## Konwencje kodowania
