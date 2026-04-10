@@ -42,7 +42,7 @@ No content is permanently modified. Deactivating the plugin removes all links in
 * Page-level priority settings
 * Activity log with operation history
 
-**<a href="https://beeclear.pl/en/internal-external-link-manager/" target="_blank">Learn more about BeeClear Smart Link Manager →</a>**
+[Learn more about BeeClear Smart Link Manager →](https://beeclear.pl/en/internal-external-link-manager/)
 
 == Installation ==
 
@@ -92,10 +92,10 @@ The plugin hooks into `the_content` filter, which most page builders respect. Co
 
 == Screenshots ==
 
-1. **Global settings panel** — configure post types, link limits, and index rebuild options from one central screen.
-2. **Per-post metabox** — override global settings or add post-specific rules directly from the post editor.
-3. **Rules list** — sortable table showing all active linking rules with inline phrase, target URL, and attribute columns.
-4. **Linking details** — precise list of targets with linking.
+1. Global settings panel — central configuration screen with default link attributes (rel, title, aria-label), CSS class, link template, cross-inline formatting tags and placement & targeting options. The right sidebar provides quick actions for rebuilding the index, a Last scan summary and maintenance tools.
+2. Per-post metabox in the editor — define phrases and rules directly on a single post, with case-sensitive toggles, search scope settings (HTML elements allowed to link in the target) and per-target linking rules, including the option to disable auto-linking for outgoing links.
+3. Linking overview — targets & sources report listing every target with its number of defined phrases, number of inbound links, the defined phrases themselves and quick access to the list of source posts.
+4. Target details popup — a quick view opened from the overview showing all phrases linking to a specific target together with the source posts where those links are injected.
 
 == Changelog ==
 
